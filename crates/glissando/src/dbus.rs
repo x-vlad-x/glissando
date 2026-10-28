@@ -19,6 +19,10 @@ pub struct OskService {
     conn: RefCell<Option<gio::DBusConnection>>,
     visible: Cell<bool>,
     _owner: Cell<Option<gio::OwnerId>>,
+    /// gnome-session client proxy. Kept alive for the life of the process: if it
+    /// is dropped the client connection goes away and gnome-session treats the
+    /// OSK as gone (which is fatal for the session, see `gnome_session_register`).
+    _session: RefCell<Option<gio::DBusProxy>>,
 }
 
 impl OskService {
@@ -31,7 +35,12 @@ impl OskService {
         set_visible: impl Fn(bool) + 'static,
         lost: impl Fn() + 'static,
     ) -> Rc<OskService> {
-        let svc = Rc::new(OskService { conn: RefCell::new(None), visible: Cell::new(false), _owner: Cell::new(None) });
+        let svc = Rc::new(OskService {
+            conn: RefCell::new(None),
+            visible: Cell::new(false),
+            _owner: Cell::new(None),
+            _session: RefCell::new(None),
+        });
         let set_visible = Rc::new(set_visible);
         let mut flags = gio::BusNameOwnerFlags::ALLOW_REPLACEMENT;
         if replace {
@@ -70,6 +79,7 @@ impl OskService {
                 }
                 if let Some(s) = s1.upgrade() {
                     *s.conn.borrow_mut() = Some(conn);
+                    s.register_with_session();
                 }
             },
             |_, _| {},
@@ -77,6 +87,15 @@ impl OskService {
         );
         svc._owner.set(Some(id));
         svc
+    }
+
+    /// Tell gnome-session this process *is* the OSK.
+    fn register_with_session(&self) {
+        let Some(conn) = self.conn.borrow().clone() else { return };
+        match gnome_session_register(&conn) {
+            Ok(proxy) => *self._session.borrow_mut() = Some(proxy),
+            Err(e) => eprintln!("glissando: gnome-session registration failed: {e}"),
+        }
     }
 
     pub fn set_visible(&self, v: bool) {
@@ -98,6 +117,67 @@ fn visible_changed(v: bool) -> glib::Variant {
     let changed = glib::VariantDict::new(None);
     changed.insert_value("Visible", &v.to_variant());
     glib::Variant::tuple_from_iter([OSK_NAME.to_variant(), changed.end(), Vec::<String>::new().to_variant()])
+}
+
+/// Register this process as the OSK with gnome-session.
+///
+/// Phosh's OSK requirements make this mandatory
+/// (<https://phosh.mobi/posts/phosh-osk-interface/> section 3): `sm.puri.OSK0` is a
+/// `RequiredComponent` of `phosh.session`, and owning the `sm.puri.OSK0` bus name is
+/// not enough. Without `RegisterClient` gnome-session logs
+/// `Application 'sm.puri.OSK0.desktop' failed to register before timeout` and then
+/// `on_required_app_failure: Unrecoverable failure in required component
+/// sm.puri.OSK0.desktop` — the whole session is replaced by the "Oh no! Something has
+/// gone wrong" page. With it, gnome-session tracks the keyboard, restarts it if it
+/// crashes and only complains when that keeps happening.
+///
+/// The returned `ClientPrivate` proxy must stay alive and is used to honour
+/// gnome-session's `Stop` request at logout.
+fn gnome_session_register(conn: &gio::DBusConnection) -> Result<gio::DBusProxy, glib::Error> {
+    const SESSION_NAME: &str = "org.gnome.SessionManager";
+    const SESSION_PATH: &str = "/org/gnome/SessionManager";
+    const SESSION_IFACE: &str = "org.gnome.SessionManager";
+    const CLIENT_IFACE: &str = "org.gnome.SessionManager.ClientPrivate";
+
+    // Same app id as the desktop file / RequiredComponents entry, and the
+    // autostart id gnome-session exports for us (empty when started by hand).
+    let startup_id = std::env::var("DESKTOP_AUTOSTART_ID").unwrap_or_default();
+    let args = (OSK_NAME, startup_id.as_str()).to_variant();
+    let reply = conn.call_sync(
+        Some(SESSION_NAME),
+        SESSION_PATH,
+        SESSION_IFACE,
+        "RegisterClient",
+        Some(&args),
+        None,
+        gio::DBusCallFlags::NONE,
+        2000,
+        gio::Cancellable::NONE,
+    )?;
+    let path = reply
+        .child_value(0)
+        .str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| "/org/gnome/SessionManager/Client1".to_string());
+
+    let proxy = gio::DBusProxy::new_sync(
+        conn,
+        gio::DBusProxyFlags::DO_NOT_LOAD_PROPERTIES | gio::DBusProxyFlags::DO_NOT_AUTO_START_AT_CONSTRUCTION,
+        None,
+        Some(SESSION_NAME),
+        &path,
+        CLIENT_IFACE,
+        gio::Cancellable::NONE,
+    )?;
+    // Logout: gnome-session asks clients to Stop. Answer it so the session can go
+    // down promptly instead of waiting for the client timeout. The launcher then
+    // execs the system keyboard, which is what takes over the shutdown screen.
+    proxy.connect_g_signal(|_, _, signal, _| {
+        if signal == "Stop" {
+            std::process::exit(0);
+        }
+    });
+    Ok(proxy)
 }
 
 /// Haptic feedback through feedbackd. Uses `org.sigxcpu.Feedback.Haptic.Vibrate`
