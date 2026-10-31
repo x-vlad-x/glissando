@@ -18,8 +18,8 @@ glissando brings the comfort of a modern phone keyboard to Linux phones —
 glide typing, smart suggestions, cursor control on the space bar — while
 staying fully on the device. It has **no network access at all**: no
 telemetry, no accounts, no cloud. Built for and tested on the
-**FuriPhone FLX1s** running **FuriOS**, and works with any Phosh-based
-system (Mobian, postmarketOS, PureOS…).
+**FuriPhone FLX1s** running **FuriOS**. It may also work on other Phosh-based
+systems (Mobian, postmarketOS, PureOS…), but these are not verified yet.
 
 > **Preview release.** This is the first public version. It is already
 > pleasant for daily typing, but expect rough edges — feedback is very
