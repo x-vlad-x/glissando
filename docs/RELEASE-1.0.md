@@ -75,7 +75,7 @@ next save replaces it.
 | Recent emoji | `$XDG_STATE_HOME/glissando/recent-emoji` | One emoji per line, newest first |
 
 New versions must read files written by any earlier 1.x version. Unknown TSV
-lines are skipped on load and dropped on the next save.
+lines are skipped on load and dropped the next time the file is written.
 
 ### Dictionaries
 
@@ -104,9 +104,8 @@ needs a new magic, and readers must keep accepting `GLDICT01` throughout 1.x.
 
 These can change in any release:
 
-- `--dump-geometry`, `--bench-render` and the `GLISSANDO_DEBUG*`,
-  `GLISSANDO_AUTOSHOW` and `GLISSANDO_VOICE_TEST_INPUT` variables, which exist
-  for testing and debugging
+- `--dump-geometry`, `--bench-render` and every `GLISSANDO_*` variable not
+  listed above, which exist for testing and debugging
 - The `glissando-voice` helper protocol and arguments, which are internal
 - The `glissando-dictc` command line
 - `glissando-session`, `glissando-trial` and `deploy.sh`, which are development
