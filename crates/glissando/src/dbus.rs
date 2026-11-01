@@ -19,6 +19,9 @@ pub struct OskService {
     conn: RefCell<Option<gio::DBusConnection>>,
     visible: Cell<bool>,
     _owner: Cell<Option<gio::OwnerId>>,
+    /// gnome-session client proxy. Kept alive so its signals keep arriving; the
+    /// registration itself lives as long as the bus connection.
+    session: Rc<RefCell<Option<gio::DBusProxy>>>,
 }
 
 impl OskService {
@@ -30,14 +33,22 @@ impl OskService {
         replace: bool,
         set_visible: impl Fn(bool) + 'static,
         lost: impl Fn() + 'static,
+        session_stop: impl Fn() + 'static,
     ) -> Rc<OskService> {
-        let svc = Rc::new(OskService { conn: RefCell::new(None), visible: Cell::new(false), _owner: Cell::new(None) });
+        let svc = Rc::new(OskService {
+            conn: RefCell::new(None),
+            visible: Cell::new(false),
+            _owner: Cell::new(None),
+            session: Rc::default(),
+        });
         let set_visible = Rc::new(set_visible);
         let mut flags = gio::BusNameOwnerFlags::ALLOW_REPLACEMENT;
         if replace {
             flags |= gio::BusNameOwnerFlags::REPLACE;
         }
         let s1 = Rc::downgrade(&svc);
+        let s2 = Rc::downgrade(&svc);
+        let session_stop: Rc<dyn Fn()> = Rc::new(session_stop);
         let sv = set_visible.clone();
         let id = gio::bus_own_name(
             gio::BusType::Session,
@@ -72,7 +83,11 @@ impl OskService {
                     *s.conn.borrow_mut() = Some(conn);
                 }
             },
-            |_, _| {},
+            move |conn, _| {
+                if let Some(s) = s2.upgrade() {
+                    gnome_session_register(&conn, s.session.clone(), session_stop.clone());
+                }
+            },
             move |_, _| lost(),
         );
         svc._owner.set(Some(id));
@@ -98,6 +113,108 @@ fn visible_changed(v: bool) -> glib::Variant {
     let changed = glib::VariantDict::new(None);
     changed.insert_value("Visible", &v.to_variant());
     glib::Variant::tuple_from_iter([OSK_NAME.to_variant(), changed.end(), Vec::<String>::new().to_variant()])
+}
+
+/// What a signal on gnome-session's `ClientPrivate` interface asks of us.
+#[derive(Debug, PartialEq)]
+enum SessionRequest {
+    /// `QueryEndSession` / `EndSession`: answer `EndSessionResponse`. Without an
+    /// answer gnome-session adds a "Not responding" inhibitor after 1 s and then
+    /// waits out the end-session timeout (90 s in 48, 10 s in current main).
+    Acknowledge,
+    /// `Stop`: leave.
+    Quit,
+    Ignore,
+}
+
+fn session_request(signal: &str) -> SessionRequest {
+    match signal {
+        "QueryEndSession" | "EndSession" => SessionRequest::Acknowledge,
+        "Stop" => SessionRequest::Quit,
+        _ => SessionRequest::Ignore,
+    }
+}
+
+/// Register this process as the OSK with gnome-session.
+///
+/// Phosh's OSK requirements make this mandatory
+/// (<https://phosh.mobi/posts/phosh-osk-interface/> section 3): `sm.puri.OSK0` is a
+/// `RequiredComponent` of `phosh.session`, and owning the bus name is not enough.
+/// gnome-session ties the client to the app it started through
+/// `DESKTOP_AUTOSTART_ID`; the app id is only a fallback.
+///
+/// Never blocks: gnome-session is itself busy while the session starts, and the main
+/// loop also serves the keyboard. Other desktops have no session manager, which is
+/// not an error.
+fn gnome_session_register(conn: &gio::DBusConnection, slot: Rc<RefCell<Option<gio::DBusProxy>>>, stop: Rc<dyn Fn()>) {
+    const SESSION_NAME: &str = "org.gnome.SessionManager";
+    const SESSION_PATH: &str = "/org/gnome/SessionManager";
+    const CLIENT_IFACE: &str = "org.gnome.SessionManager.ClientPrivate";
+
+    let startup_id = std::env::var("DESKTOP_AUTOSTART_ID").unwrap_or_default();
+    let args = (OSK_NAME, startup_id.as_str()).to_variant();
+    let conn2 = conn.clone();
+    conn.call(
+        Some(SESSION_NAME),
+        SESSION_PATH,
+        SESSION_NAME,
+        "RegisterClient",
+        Some(&args),
+        Some(glib::VariantTy::new("(o)").expect("valid type")),
+        gio::DBusCallFlags::NO_AUTO_START,
+        -1,
+        gio::Cancellable::NONE,
+        move |reply| {
+            let reply = match reply {
+                Ok(r) => r,
+                Err(e) if e.matches(gio::DBusError::ServiceUnknown) || e.matches(gio::DBusError::NameHasNoOwner) => return,
+                Err(e) => {
+                    eprintln!("glissando: gnome-session registration failed: {e}");
+                    return;
+                }
+            };
+            let Some(path) = reply.child_value(0).str().map(str::to_owned) else { return };
+            gio::DBusProxy::new(
+                &conn2,
+                gio::DBusProxyFlags::DO_NOT_LOAD_PROPERTIES | gio::DBusProxyFlags::DO_NOT_AUTO_START_AT_CONSTRUCTION,
+                None,
+                Some(SESSION_NAME),
+                &path,
+                CLIENT_IFACE,
+                gio::Cancellable::NONE,
+                move |proxy| match proxy {
+                    Ok(proxy) => {
+                        // `connect_g_signal` needs a Send + Sync closure, which cannot
+                        // reach the single-threaded App. Everything here runs on the
+                        // main loop, so connect locally.
+                        proxy.connect_local("g-signal", false, move |args| {
+                            let proxy = args[0].get::<gio::DBusProxy>().ok()?;
+                            let signal = args[2].get::<String>().ok()?;
+                            match session_request(&signal) {
+                                SessionRequest::Acknowledge => proxy.call(
+                                    "EndSessionResponse",
+                                    Some(&(true, "").to_variant()),
+                                    gio::DBusCallFlags::NONE,
+                                    -1,
+                                    gio::Cancellable::NONE,
+                                    |r| {
+                                        if let Err(e) = r {
+                                            eprintln!("glissando: EndSessionResponse failed: {e}");
+                                        }
+                                    },
+                                ),
+                                SessionRequest::Quit => stop(),
+                                SessionRequest::Ignore => {}
+                            }
+                            None
+                        });
+                        *slot.borrow_mut() = Some(proxy);
+                    }
+                    Err(e) => eprintln!("glissando: gnome-session client proxy failed: {e}"),
+                },
+            );
+        },
+    );
 }
 
 /// Haptic feedback through feedbackd. Uses `org.sigxcpu.Feedback.Haptic.Vibrate`
@@ -188,6 +305,14 @@ pub fn osk_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_signals_are_answered_and_stop_quits() {
+        assert_eq!(session_request("QueryEndSession"), SessionRequest::Acknowledge);
+        assert_eq!(session_request("EndSession"), SessionRequest::Acknowledge);
+        assert_eq!(session_request("Stop"), SessionRequest::Quit);
+        assert_eq!(session_request("CancelEndSession"), SessionRequest::Ignore);
+    }
 
     #[test]
     fn visible_changed_has_the_properties_changed_signature() {

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The keyboard registers with gnome-session, which Phosh requires of a
+  required session component. Without it, sessions started from
+  `sm.puri.OSK0.desktop` failed with "Oh no! Something has gone wrong".
+  Thanks to [@VipinVIP](https://github.com/VipinVIP) for tracking this down
+  on a system without systemd and proposing the fix (#1)
+
 ## 0.3.0 – third preview
 
 - The second letter of a word no longer replaces the first when typing into

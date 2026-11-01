@@ -713,7 +713,7 @@ impl App {
                 Action::OpenSettings => {
                     let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("glissando-settings")));
                     let cmd = exe.filter(|p| p.exists()).unwrap_or_else(|| "glissando-settings".into());
-                    if let Err(e) = std::process::Command::new(cmd).spawn() {
+                    if let Err(e) = std::process::Command::new(cmd).env_remove("DESKTOP_AUTOSTART_ID").spawn() {
                         eprintln!("glissando: cannot start settings: {e}");
                     }
                     self.user_hidden = true;
@@ -768,6 +768,7 @@ impl App {
             let _ = c.wait();
         }
         let child = std::process::Command::new(helper("glissando-voice"))
+            .env_remove("DESKTOP_AUTOSTART_ID")
             .args(["--lang", lang])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -1045,6 +1046,7 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
     if !opts.no_dbus {
         let w1 = Rc::downgrade(&app);
         let w2 = Rc::downgrade(&app);
+        let w3 = Rc::downgrade(&app);
         let osk = OskService::start(
             opts.replace,
             move |v| {
@@ -1057,6 +1059,15 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
             move || {
                 eprintln!("glissando: lost sm.puri.OSK0 (replaced by another keyboard or no session bus)");
                 if let Some(a) = w2.upgrade() {
+                    if let Ok(mut a) = a.try_borrow_mut() {
+                        a.quit = true;
+                    }
+                }
+            },
+            // gnome-session's Stop goes through the same exit as a signal, so
+            // the words learned since the last timed save are kept.
+            move || {
+                if let Some(a) = w3.upgrade() {
                     if let Ok(mut a) = a.try_borrow_mut() {
                         a.quit = true;
                     }
