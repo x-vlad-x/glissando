@@ -10,7 +10,7 @@ Output columns: emoji, group, then one keyword column per language
 Only fully-qualified emoji are kept; skin tone variants are folded into
 their base emoji (column 'tones' lists the variants).
 """
-import json, sys, urllib.request, pathlib
+import hashlib, json, sys, urllib.request, pathlib
 
 EMOJI_VER = "16.0"
 CLDR_VER = "46.0.0"
@@ -18,14 +18,29 @@ LANGS = ["en", "de", "ru"]
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "data" / "emoji" / "emoji.tsv"
 CACHE = ROOT / ".devtools" / "emoji-cache"
+SHA256 = {
+    "emoji-test-16.0.txt": "24f0c534e86cf142e2496953e8f0e46a3e702392911eddcd29c6cced85139697",
+    "annotations-en-46.0.0.json": "2405d3f2e4c5812a4faf93d965630246269e0177ce907d863c7d6bb197e957c1",
+    "annotations-de-46.0.0.json": "1071d9ccbcad11b9c02f05fa5a2d5f42feddb0cb177d20132e40ac988d14c3af",
+    "annotations-ru-46.0.0.json": "b4f934ae432c2c8bb6bf4126962dbb02f4810d93bd681c6da018ed9b60a6c170",
+    "annotationsDerived-en-46.0.0.json": "603b94176ee294ba2454a0c85a2835082ff4812cbeb5bb4e3ea78664f28ba16d",
+    "annotationsDerived-de-46.0.0.json": "80f25e89b409cde9ab5bc028d02dc1746f3a9da7aba7946830495edc431b93a5",
+    "annotationsDerived-ru-46.0.0.json": "fe62f4476844b9b8889040db8bbe1236c82549153f34d6f11bc571554d8f3ce0",
+}
 
 def fetch(url, name):
     CACHE.mkdir(parents=True, exist_ok=True)
     p = CACHE / name
-    if not p.exists():
+    if p.exists():
+        data = p.read_bytes()
+    else:
         with urllib.request.urlopen(url, timeout=60) as r:
-            p.write_bytes(r.read())
-    return p.read_text(encoding="utf-8")
+            data = r.read()
+    got = hashlib.sha256(data).hexdigest()
+    if got != SHA256[name]:
+        sys.exit(f"checksum mismatch for {name}: expected {SHA256[name]}, got {got}")
+    p.write_bytes(data)
+    return data.decode("utf-8")
 
 TONES = {chr(c) for c in range(0x1F3FB, 0x1F400)}
 
