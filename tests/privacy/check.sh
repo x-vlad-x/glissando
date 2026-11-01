@@ -29,6 +29,7 @@ if E2E_KB_PRELOAD="$tmp/netguard.so" dbus-run-session -- python3 -I tests/e2e/e2
 else
     echo "FAIL e2e with socket guard"; grep -E "^(PASS|FAIL)" "$tmp/e2e.log"; fail=1
 fi
+grep -E "^SKIP" "$tmp/e2e.log" || true
 if [ -s "$NETGUARD_LOG" ]; then echo "FAIL network attempts:"; cat "$NETGUARD_LOG"; fail=1; else echo "PASS no network attempts"; fi
 
 if unshare --user --map-root-user --net sh -c 'ip -o link 2>/dev/null | grep -qv " lo:" && exit 1; exit 0'; then
@@ -37,5 +38,7 @@ if unshare --user --map-root-user --net sh -c 'ip -o link 2>/dev/null | grep -qv
     else
         echo "FAIL e2e offline"; grep -E "^(PASS|FAIL)" "$tmp/offline.log"; fail=1
     fi
+else
+    echo "FAIL could not create an empty network namespace; the offline check did not run"; fail=1
 fi
 exit $fail

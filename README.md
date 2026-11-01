@@ -120,6 +120,9 @@ dbus-run-session -- python3 tests/e2e/e2e.py
 tests/privacy/check.sh
 ```
 
+Both run in CI. The voice test reports `SKIP` unless its model and test
+recording are present in `.devtools/voice`.
+
 Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 FuriOS input stack: [docs/research/furios.md](docs/research/furios.md) ·
 Reference behaviour: [docs/research/reference-behaviour.md](docs/research/reference-behaviour.md)
