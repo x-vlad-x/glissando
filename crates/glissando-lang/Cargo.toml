@@ -7,5 +7,6 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+glissando-config = { version = "0.3.0", path = "../glissando-config" }
 glissando-core = { version = "0.3.0", path = "../glissando-core" }
 memmap2 = "0.9.12"

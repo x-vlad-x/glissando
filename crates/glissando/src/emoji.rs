@@ -151,11 +151,10 @@ impl Recents {
         self.items.push_front(e.to_string());
         self.items.truncate(40);
         if let Some(p) = &self.path {
-            if let Some(d) = p.parent() {
-                let _ = std::fs::create_dir_all(d);
-            }
             let s: Vec<&str> = self.items.iter().map(|s| s.as_str()).collect();
-            let _ = std::fs::write(p, s.join("\n"));
+            if let Err(e) = glissando_config::write_private(p, s.join("\n").as_bytes()) {
+                eprintln!("glissando: saving {} failed: {e}", p.display());
+            }
         }
     }
 
@@ -187,5 +186,31 @@ mod tests {
         assert!(db.search("herz", 10).iter().any(|e| e.text.starts_with('❤')));
         let wave = db.emoji.iter().find(|e| e.text == "👋").unwrap();
         assert_eq!(wave.tones.len(), 5);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recents_are_replaced_atomically_and_privately() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("glissando-recents-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("recent-emoji");
+        std::fs::write(&path, "🍕\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let before = std::fs::metadata(&path).unwrap();
+
+        let mut r = Recents::load(&path);
+        r.used("🐱");
+
+        let after = std::fs::metadata(&path).unwrap();
+        assert_eq!(after.permissions().mode() & 0o777, 0o600);
+        assert_ne!(
+            std::os::unix::fs::MetadataExt::ino(&before),
+            std::os::unix::fs::MetadataExt::ino(&after),
+            "written in place"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "🐱\n🍕");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

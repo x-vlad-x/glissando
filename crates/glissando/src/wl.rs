@@ -135,6 +135,11 @@ pub struct App {
     osk: Option<Rc<OskService>>,
     haptics: Haptics,
     auto_show: bool,
+    /// The settings `kb.config` was based on, to tell what the quick menu
+    /// changed from what another process wrote to the file.
+    saved_config: Config,
+    /// Keeps the desktop settings being followed alive.
+    _desktop_settings: Vec<gio::Settings>,
     dump_geometry: Option<std::path::PathBuf>,
     last_geometry: String,
     save_timer: Option<glib::SourceId>,
@@ -162,6 +167,10 @@ pub fn voice_available() -> bool {
         .unwrap_or(false)
 }
 
+fn auto_show_wanted() -> bool {
+    std::env::var_os("GLISSANDO_AUTOSHOW").is_some() || dbus::osk_enabled()
+}
+
 pub struct Options {
     pub replace: bool,
     pub show: bool,
@@ -184,7 +193,20 @@ impl App {
         if config.key_borders { t.with_borders() } else { t }
     }
 
+    /// Write what the quick menu changed. A failed write is tried again the
+    /// next time the file changes, for example once a typo in it is fixed.
+    pub fn save_config_changes(&mut self) {
+        if self.kb.config == self.saved_config {
+            return;
+        }
+        match Config::save_changes(&self.saved_config, &self.kb.config) {
+            Ok(()) => self.saved_config = self.kb.config.clone(),
+            Err(e) => eprintln!("glissando: saving config failed: {e}"),
+        }
+    }
+
     pub fn apply_config(&mut self, config: Config, layouts: Vec<glissando_core::layout::Layout>) {
+        self.saved_config = config.clone();
         self.theme = Self::theme_for(&config);
         self.renderer.set_font(&config.font);
         self.haptics.enabled = config.haptics;
@@ -212,6 +234,26 @@ impl App {
     /// opens only on request (e.g. a calculator with its own keypad).
     fn app_blocked(&self) -> bool {
         self.active_app.as_deref().map(|a| self.kb.config.auto_show_blocked(a)).unwrap_or(false)
+    }
+
+    /// `screen-keyboard-enabled` changed. It only governs showing on focus: an
+    /// explicit `SetVisible` from Phosh's home bar still works, as at startup.
+    fn osk_enabled_changed(&mut self) {
+        self.auto_show = auto_show_wanted();
+        dlog!("auto show {}", self.auto_show);
+        self.update_visibility();
+        self.flush();
+    }
+
+    /// The system colour scheme changed. A theme chosen in the settings stays.
+    fn color_scheme_changed(&mut self) {
+        if self.kb.config.theme != ThemeMode::System {
+            return;
+        }
+        self.theme = Self::theme_for(&self.kb.config);
+        dlog!("system theme {}", if self.theme.dark { "dark" } else { "light" });
+        self.after_input();
+        self.flush();
     }
 
     fn toplevels_changed(&mut self) {
@@ -737,9 +779,7 @@ impl App {
                 }
                 Action::Resize => self.update_height(),
                 Action::SaveConfig => {
-                    if let Err(e) = self.kb.config.save() {
-                        eprintln!("glissando: saving config failed: {e}");
-                    }
+                    self.save_config_changes();
                     self.theme = Self::theme_for(&self.kb.config);
                     self.update_height();
                 }
@@ -1057,7 +1097,9 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         forced_visible: opts.show,
         osk: None,
         haptics,
-        auto_show: std::env::var_os("GLISSANDO_AUTOSHOW").is_some() || dbus::osk_enabled(),
+        auto_show: auto_show_wanted(),
+        saved_config: config.clone(),
+        _desktop_settings: Vec::new(),
         dump_geometry: opts.dump_geometry.clone(),
         last_geometry: String::new(),
         save_timer: None,
@@ -1099,6 +1141,26 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
             },
         );
         app.borrow_mut().osk = Some(osk);
+    }
+    {
+        let w = Rc::downgrade(&app);
+        let watched = dbus::watch_osk_enabled(move || {
+            if let Some(a) = w.upgrade()
+                && let Ok(mut a) = a.try_borrow_mut()
+            {
+                a.osk_enabled_changed();
+            }
+        });
+        app.borrow_mut()._desktop_settings.extend(watched);
+        let w = Rc::downgrade(&app);
+        let watched = dbus::watch_color_scheme(move || {
+            if let Some(a) = w.upgrade()
+                && let Ok(mut a) = a.try_borrow_mut()
+            {
+                a.color_scheme_changed();
+            }
+        });
+        app.borrow_mut()._desktop_settings.extend(watched);
     }
     {
         let mut a = app.borrow_mut();

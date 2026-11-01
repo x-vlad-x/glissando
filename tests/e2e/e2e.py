@@ -7,7 +7,7 @@ dbus-run-session) so nothing touches the developer's desktop.
 
     tests/e2e/e2e.py [-k NAME] [--keep] [--shots DIR] [--release]
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile, time, traceback
+import argparse, json, os, pathlib, shutil, subprocess, sys, tempfile, time, traceback
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SWAY = os.path.join(ROOT, ".devtools/root/usr/bin/sway")
@@ -18,9 +18,26 @@ if LANDSCAPE:
     OUT_W, OUT_H = 780, 360
 
 
+DESKTOP_SCHEMAS = """<schemalist>
+  <enum id="e2e.ColorScheme">
+    <value nick="default" value="0"/>
+    <value nick="prefer-dark" value="1"/>
+    <value nick="prefer-light" value="2"/>
+  </enum>
+  <schema id="org.gnome.desktop.interface" path="/org/gnome/desktop/interface/">
+    <key name="color-scheme" enum="e2e.ColorScheme"><default>'default'</default></key>
+  </schema>
+  <schema id="org.gnome.desktop.a11y.applications" path="/org/gnome/desktop/a11y/applications/">
+    <key name="screen-keyboard-enabled" type="b"><default>true</default></key>
+  </schema>
+</schemalist>
+"""
+A11Y = "org.gnome.desktop.a11y.applications"
+
+
 class Session:
     def __init__(self, args, purpose=None, hint=None, config=None, kb_args=(), toolkit=None, app_id=None,
-                 text=None, dbus=False, expect_keyboard=True):
+                 text=None, dbus=False, session_manager=False, expect_keyboard=True, desktop_settings=False):
         self.args = args
         self.tmp = tempfile.mkdtemp(prefix="glissando-e2e-")
         self.env = dict(os.environ)
@@ -41,6 +58,8 @@ class Session:
             "GLISSANDO_TK_EXTENT": f"{OUT_W}x{OUT_H}",
         })
         voice_setup(self.env)
+        if desktop_settings:
+            self.use_desktop_settings()
         if config:
             os.makedirs(self.env["XDG_CONFIG_HOME"] + "/glissando", exist_ok=True)
             with open(self.env["XDG_CONFIG_HOME"] + "/glissando/config.toml", "w") as f:
@@ -71,6 +90,10 @@ class Session:
             self.spawn("dbus", ["dbus-daemon", "--session", "--nofork", "--address=unix:path=" + bus])
             self.env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + bus
             self.wait(lambda: os.path.exists(bus), "session bus")
+        if session_manager:
+            self.spawn("session-manager", [sys.executable, "-I", os.path.join(ROOT, "tests/e2e/fake_session_manager.py")])
+            self.wait(lambda: "ready" in self.log("session-manager"), "fake session manager")
+            self.env["DESKTOP_AUTOSTART_ID"] = "e2e-startup-id"
         self.spawn("kb", [self.kb_bin, *([] if dbus else ["--no-dbus"]), "--dump-geometry", self.geom_file, *kb_args],
                    extra_env={"GLISSANDO_DEBUG": "1",
                               **({"GLISSANDO_DEBUG_INPUT": "1"} if os.environ.get("E2E_INPUT") else {}),
@@ -92,6 +115,21 @@ class Session:
             return
         self.wait(lambda: os.path.exists(self.geom_file) and self.surface_height() > 0, "keyboard surface")
         time.sleep(0.3)
+
+    def use_desktop_settings(self):
+        """Desktop settings the test can change, without dconf or the
+        schemas of the developer's system. Follows them instead of forcing
+        the keyboard on."""
+        schemas = os.path.join(self.tmp, "schemas")
+        os.mkdir(schemas)
+        with open(os.path.join(schemas, "e2e.gschema.xml"), "w") as f:
+            f.write(DESKTOP_SCHEMAS)
+        subprocess.run(["glib-compile-schemas", schemas], check=True)
+        del self.env["GLISSANDO_AUTOSHOW"]
+        self.env.update({"GSETTINGS_SCHEMA_DIR": schemas, "GSETTINGS_BACKEND": "keyfile", "GIO_USE_VFS": "local"})
+
+    def gsettings(self, schema, key, value):
+        subprocess.run(["gsettings", "set", schema, key, value], env=self.env, check=True, timeout=5)
 
     def spawn(self, name, cmd, extra_env=None):
         env = dict(self.env)
@@ -348,6 +386,73 @@ def run_home_bar_toggle(args):
 
 
 @test
+def session_manager_end_of_session(s):
+    pass  # see run_session_manager
+
+
+def run_session_manager(args):
+    s = Session(args, dbus=True, session_manager=True, config="autocorrect = false\n")
+    try:
+        def calls():
+            return s.log("session-manager").splitlines()
+
+        def emit(signal):
+            subprocess.run(["gdbus", "call", "--session", "--dest", "org.gnome.SessionManager",
+                            "--object-path", "/org/gnome/SessionManager",
+                            "--method", "org.gnome.SessionManager.E2E.Emit", signal],
+                           env=s.env, check=True, timeout=5, stdout=subprocess.DEVNULL)
+
+        s.wait(lambda: "RegisterClient sm.puri.OSK0 e2e-startup-id owned=True" in calls(), "registration")
+        emit("QueryEndSession")
+        s.wait(lambda: calls().count("EndSessionResponse True ") == 1, "answer to QueryEndSession")
+        emit("EndSession")
+        s.wait(lambda: calls().count("EndSessionResponse True ") == 2, "answer to EndSession")
+
+        s.type("blorp ")
+        s.wait(lambda: s.state()["text"] == "Blorp ", "typed word")
+        kb = dict(s.procs)["kb"]
+        assert kb.poll() is None, "the keyboard must keep running until Stop"
+        emit("Stop")
+        s.wait(lambda: kb.poll() is not None, "exit on Stop")
+        assert kb.returncode == 0, f"exit status {kb.returncode}"
+        user = pathlib.Path(s.env["XDG_DATA_HOME"], "glissando", "user")
+        learned = "".join(f.read_text() for f in user.glob("*.tsv"))
+        assert "\tblorp\t" in learned.lower(), f"learned word lost on Stop: {learned!r}"
+    finally:
+        s.close()
+
+
+@test
+def follows_screen_keyboard_enabled(s):
+    s.gsettings(A11Y, "screen-keyboard-enabled", "false")
+    s.wait(lambda: not shown(s), "hidden while disabled")
+    s.gsettings(A11Y, "screen-keyboard-enabled", "true")
+    s.wait(lambda: shown(s), "shown again once enabled")
+follows_screen_keyboard_enabled.desktop_settings = True
+
+
+@test
+def follows_system_colour_scheme(s):
+    s.gsettings("org.gnome.desktop.interface", "color-scheme", "prefer-dark")
+    s.wait(lambda: "system theme dark" in s.log("kb"), "dark theme")
+    s.gsettings("org.gnome.desktop.interface", "color-scheme", "default")
+    s.wait(lambda: "system theme light" in s.log("kb"), "light theme")
+follows_system_colour_scheme.desktop_settings = True
+
+
+@test
+def fixed_theme_ignores_system_colour_scheme(s):
+    s.gsettings("org.gnome.desktop.interface", "color-scheme", "prefer-dark")
+    # The accessibility key is watched the same way and proves the settings
+    # were delivered.
+    s.gsettings(A11Y, "screen-keyboard-enabled", "false")
+    s.wait(lambda: not shown(s), "settings delivered")
+    assert "system theme" not in s.log("kb")
+fixed_theme_ignores_system_colour_scheme.config = 'theme = "light"\n'
+fixed_theme_ignores_system_colour_scheme.desktop_settings = True
+
+
+@test
 def glide_typing(s):
     pts = []
     for ch in "hello":
@@ -537,9 +642,12 @@ def main():
                 run_no_auto_show(args)
             elif t.__name__ == "home_bar_toggle":
                 run_home_bar_toggle(args)
+            elif t.__name__ == "session_manager_end_of_session":
+                run_session_manager(args)
             else:
                 s = Session(args, config=getattr(t, "config", None), toolkit=getattr(t, "toolkit", None),
-                            purpose=getattr(t, "purpose", None), text=getattr(t, "text", None))
+                            purpose=getattr(t, "purpose", None), text=getattr(t, "text", None),
+                            desktop_settings=getattr(t, "desktop_settings", False))
                 try:
                     t(s)
                 finally:

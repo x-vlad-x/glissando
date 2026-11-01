@@ -178,6 +178,10 @@ fn main() {
             }
         }
     }
+    let epochs = std::cell::RefCell::new(config::EpochTracker::from_file());
+    config::remove_stale_temporary_files(&config::config_dir());
+    config::remove_stale_temporary_files(&config::data_dir().join("user"));
+    config::remove_stale_temporary_files(&config::state_dir());
     let config = Config::load();
     let layouts = load_layouts(&config);
     let langs = load_languages(&layouts);
@@ -208,7 +212,18 @@ fn main() {
                     | gio::FileMonitorEvent::Created
                     | gio::FileMonitorEvent::Changed
             ) {
-                let cfg = Config::load();
+                if let Ok(mut app) = a.try_borrow_mut() {
+                    app.save_config_changes();
+                }
+                // A broken file must not count as the defaults.
+                let cfg = match Config::read() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("glissando: ignoring invalid {}: {e}", Config::path().display());
+                        return;
+                    }
+                };
+                let requested = epochs.borrow_mut().observe(&cfg);
                 if let Ok(mut app) = a.try_borrow_mut()
                     && cfg != app.kb.config
                 {
@@ -219,18 +234,24 @@ fn main() {
                         let langs = load_languages(&layouts);
                         let mut e = Engine::new(langs, engine_settings(&cfg));
                         std::mem::swap(&mut app.kb.engine, &mut e);
-                        e.save_user_data();
-                    }
-                    let old = app.kb.config.clone();
-                    if cfg.user_data_epoch != old.user_data_epoch {
-                        app.kb.engine.clear_user_data();
-                        panels::RECENTS.with(|r| r.borrow_mut().clear());
-                        clipboard::HISTORY.with(|h| h.borrow_mut().clear_all());
-                    } else if cfg.user_dict_epoch != old.user_dict_epoch {
-                        let dir = config::data_dir().join("user");
-                        for l in app.kb.engine.langs.iter_mut() {
-                            l.user = UserModel::load(&dir.join(format!("{}.tsv", l.code)));
+                        // Saving here would bring deleted words back.
+                        if requested != config::EpochChange::UserData {
+                            e.save_user_data();
                         }
+                    }
+                    match requested {
+                        config::EpochChange::UserData => {
+                            app.kb.engine.clear_user_data();
+                            panels::RECENTS.with(|r| r.borrow_mut().clear());
+                            clipboard::HISTORY.with(|h| h.borrow_mut().clear_all());
+                        }
+                        config::EpochChange::UserDict => {
+                            let dir = config::data_dir().join("user");
+                            for l in app.kb.engine.langs.iter_mut() {
+                                l.user = UserModel::load(&dir.join(format!("{}.tsv", l.code)));
+                            }
+                        }
+                        config::EpochChange::None => {}
                     }
                     app.apply_config(cfg, layouts);
                 }

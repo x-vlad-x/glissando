@@ -283,26 +283,46 @@ impl Haptics {
     }
 }
 
+/// A desktop setting, if its schema and key are installed. Other desktops may
+/// have neither.
+fn desktop_setting(schema: &str, key: &str) -> Option<gio::Settings> {
+    let source = gio::SettingsSchemaSource::default()?;
+    source.lookup(schema, true).filter(|s| s.has_key(key))?;
+    Some(gio::Settings::new(schema))
+}
+
+/// Call `changed` whenever a desktop setting changes, for as long as the
+/// returned object is kept.
+fn watch_setting(schema: &str, key: &str, changed: impl Fn() + 'static) -> Option<gio::Settings> {
+    let settings = desktop_setting(schema, key)?;
+    // GSettings only reports changes of keys that have been read.
+    let _ = settings.value(key);
+    settings.connect_changed(Some(key), move |_, _| changed());
+    Some(settings)
+}
+
+const INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
+const COLOR_SCHEME_KEY: &str = "color-scheme";
+
 /// Whether the desktop prefers a dark appearance (GNOME/Phosh setting).
 pub fn prefers_dark() -> bool {
-    let Some(src) = gio::SettingsSchemaSource::default() else { return false };
-    if src.lookup("org.gnome.desktop.interface", true).is_none() {
-        return false;
-    }
-    let s = gio::Settings::new("org.gnome.desktop.interface");
-    if s.settings_schema().map(|sc| sc.has_key("color-scheme")).unwrap_or(false) {
-        return s.string("color-scheme") == "prefer-dark";
-    }
-    false
+    desktop_setting(INTERFACE_SCHEMA, COLOR_SCHEME_KEY).is_some_and(|s| s.string(COLOR_SCHEME_KEY) == "prefer-dark")
 }
+
+pub fn watch_color_scheme(changed: impl Fn() + 'static) -> Option<gio::Settings> {
+    watch_setting(INTERFACE_SCHEMA, COLOR_SCHEME_KEY, changed)
+}
+
+const A11Y_SCHEMA: &str = "org.gnome.desktop.a11y.applications";
+const OSK_ENABLED_KEY: &str = "screen-keyboard-enabled";
 
 /// Whether the screen keyboard should show automatically on focus.
 pub fn osk_enabled() -> bool {
-    let Some(src) = gio::SettingsSchemaSource::default() else { return true };
-    if src.lookup("org.gnome.desktop.a11y.applications", true).is_none() {
-        return true;
-    }
-    gio::Settings::new("org.gnome.desktop.a11y.applications").boolean("screen-keyboard-enabled")
+    desktop_setting(A11Y_SCHEMA, OSK_ENABLED_KEY).is_none_or(|s| s.boolean(OSK_ENABLED_KEY))
+}
+
+pub fn watch_osk_enabled(changed: impl Fn() + 'static) -> Option<gio::Settings> {
+    watch_setting(A11Y_SCHEMA, OSK_ENABLED_KEY, changed)
 }
 
 #[cfg(test)]
