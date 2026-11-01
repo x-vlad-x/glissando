@@ -12,14 +12,19 @@ use crate::geometry::LayerGeometry;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyKind {
     /// Text key. `letter` keys may start glide typing; `popup` keys have long-press entries.
-    Text { letter: bool, popup: bool },
+    Text {
+        letter: bool,
+        popup: bool,
+    },
     Space,
     Backspace,
     Shift,
     /// Arrow keys: activate on release, repeat while held.
     Repeat,
     /// Everything else; activates on release.
-    Other { popup: bool },
+    Other {
+        popup: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,28 +76,62 @@ impl Default for TouchConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TouchEvent {
     /// Visual/haptic press feedback for a key.
-    Pressed { key: usize },
-    Released { key: usize },
+    Pressed {
+        key: usize,
+    },
+    Released {
+        key: usize,
+    },
     /// The key was tapped (x, y is the touch point used by the spatial model).
-    Activate { key: usize, x: f32, y: f32 },
+    Activate {
+        key: usize,
+        x: f32,
+        y: f32,
+    },
     /// Shift was double tapped: caps lock.
-    CapsLock { key: usize },
+    CapsLock {
+        key: usize,
+    },
     /// Shift is released after it was used as a held modifier.
-    ShiftChordEnd { key: usize },
-    LongPress { key: usize, x: f32, y: f32 },
-    PopupMove { x: f32, y: f32 },
+    ShiftChordEnd {
+        key: usize,
+    },
+    LongPress {
+        key: usize,
+        x: f32,
+        y: f32,
+    },
+    PopupMove {
+        x: f32,
+        y: f32,
+    },
     PopupCommit,
-    Repeat { key: usize, count: u32 },
+    Repeat {
+        key: usize,
+        count: u32,
+    },
     CursorStart,
     /// Relative cursor movement in characters (negative = left).
-    CursorMove { dx: i32, dy: i32 },
+    CursorMove {
+        dx: i32,
+        dy: i32,
+    },
     CursorEnd,
     TrackpadStart,
-    DeletePreview { words: u32 },
-    DeleteCommit { words: u32 },
+    DeletePreview {
+        words: u32,
+    },
+    DeleteCommit {
+        words: u32,
+    },
     DeleteCancel,
-    SwipeStart { key: usize },
-    SwipeMove { x: f32, y: f32 },
+    SwipeStart {
+        key: usize,
+    },
+    SwipeMove {
+        x: f32,
+        y: f32,
+    },
     SwipeEnd,
 }
 
@@ -231,10 +270,8 @@ impl TouchMachine {
             out.push(TouchEvent::Pressed { key: k });
             match self.kind(k) {
                 KeyKind::Shift => {
-                    let dbl = self
-                        .last_shift_tap
-                        .map(|lt| t.wrapping_sub(lt) <= self.config.double_tap_ms)
-                        .unwrap_or(false);
+                    let dbl =
+                        self.last_shift_tap.map(|lt| t.wrapping_sub(lt) <= self.config.double_tap_ms).unwrap_or(false);
                     if dbl {
                         self.last_shift_tap = None;
                         out.push(TouchEvent::CapsLock { key: k });
@@ -365,11 +402,8 @@ impl TouchMachine {
     fn scrub_delete(p: &mut Pointer, cfg: &TouchConfig, out: &mut Vec<TouchEvent>) {
         let Mode::Delete { words } = p.mode else { return };
         let dx = p.start.x - p.last.x;
-        let n = if dx < cfg.delete_trigger_px {
-            0
-        } else {
-            1 + ((dx - cfg.delete_trigger_px) / cfg.delete_word_px) as u32
-        };
+        let n =
+            if dx < cfg.delete_trigger_px { 0 } else { 1 + ((dx - cfg.delete_trigger_px) / cfg.delete_word_px) as u32 };
         if n != words {
             out.push(TouchEvent::DeletePreview { words: n });
             p.mode = Mode::Delete { words: n };
@@ -401,10 +435,8 @@ impl TouchMachine {
                 }
             }
             Mode::ShiftHeld { used } => {
-                if used {
-                    if let Some(k) = p.key {
-                        out.push(TouchEvent::ShiftChordEnd { key: k });
-                    }
+                if used && let Some(k) = p.key {
+                    out.push(TouchEvent::ShiftChordEnd { key: k });
                 }
             }
             Mode::Repeating { .. } | Mode::Done => {}
@@ -458,7 +490,8 @@ impl TouchMachine {
                     out.push(TouchEvent::Repeat { key: key.unwrap(), count });
                     p.deadline = Some(now + cfg.repeat_interval_ms);
                 }
-                (Mode::Tap, Some(KeyKind::Text { popup: true, .. })) | (Mode::Tap, Some(KeyKind::Other { popup: true })) => {
+                (Mode::Tap, Some(KeyKind::Text { popup: true, .. }))
+                | (Mode::Tap, Some(KeyKind::Other { popup: true })) => {
                     p.mode = Mode::Popup;
                     out.push(TouchEvent::LongPress { key: key.unwrap(), x: p.last.x, y: p.last.y });
                 }
@@ -487,7 +520,7 @@ impl TouchMachine {
 mod tests {
     use super::*;
     use crate::geometry::{GeometryParams, Rect};
-    use crate::layout::{parse_row, KeyAction, Layer, RowDef};
+    use crate::layout::{KeyAction, Layer, RowDef, parse_row};
 
     fn machine(cfg: TouchConfig) -> TouchMachine {
         let layer = Layer {
@@ -510,10 +543,9 @@ mod tests {
             .keys()
             .filter(|k| k.style != crate::layout::KeyStyle::Invisible)
             .map(|k| match &k.action {
-                KeyAction::Text(t) => KeyKind::Text {
-                    letter: t.chars().all(|c| c.is_alphabetic()),
-                    popup: t == "e" || t == ".",
-                },
+                KeyAction::Text(t) => {
+                    KeyKind::Text { letter: t.chars().all(|c| c.is_alphabetic()), popup: t == "e" || t == "." }
+                }
                 KeyAction::Space => KeyKind::Space,
                 KeyAction::Backspace => KeyKind::Backspace,
                 KeyAction::Shift => KeyKind::Shift,
@@ -530,9 +562,7 @@ mod tests {
     }
 
     fn activated(ev: &[TouchEvent]) -> Vec<usize> {
-        ev.iter()
-            .filter_map(|e| if let TouchEvent::Activate { key, .. } = e { Some(*key) } else { None })
-            .collect()
+        ev.iter().filter_map(|e| if let TouchEvent::Activate { key, .. } = e { Some(*key) } else { None }).collect()
     }
 
     #[test]
@@ -687,8 +717,7 @@ mod tests {
 
     #[test]
     fn slide_to_adjust_on_non_letters() {
-        let mut cfg = TouchConfig::default();
-        cfg.swipe_enabled = false;
+        let cfg = TouchConfig { swipe_enabled: false, ..TouchConfig::default() };
         let mut m = machine(cfg);
         let (x1, y1) = center(&m, 0, 0);
         let (x2, y2) = center(&m, 0, 1);

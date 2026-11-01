@@ -49,9 +49,8 @@ pub fn engine_settings(c: &Config) -> Settings {
 }
 
 fn load_layouts(config: &Config) -> Vec<Layout> {
-    let sym_src = config::find_resource("layouts/symbols.toml")
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .unwrap_or_default();
+    let sym_src =
+        config::find_resource("layouts/symbols.toml").and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
     let symbols = SymbolSet::parse(&sym_src).unwrap_or_else(|e| {
         eprintln!("glissando: symbols.toml: {e}");
         SymbolSet::default()
@@ -62,7 +61,10 @@ fn load_layouts(config: &Config) -> Vec<Layout> {
             eprintln!("glissando: layout {id} not found");
             continue;
         };
-        match std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|s| Layout::parse(&s, &symbols).map_err(|e| e.to_string())) {
+        match std::fs::read_to_string(&p)
+            .map_err(|e| e.to_string())
+            .and_then(|s| Layout::parse(&s, &symbols).map_err(|e| e.to_string()))
+        {
             Ok(l) => out.push(l),
             Err(e) => eprintln!("glissando: {}: {e}", p.display()),
         }
@@ -200,32 +202,37 @@ fn main() {
     if let Some(m) = &monitor {
         let a = app.clone();
         m.connect_changed(move |_, _, _, ev| {
-            if matches!(ev, gio::FileMonitorEvent::ChangesDoneHint | gio::FileMonitorEvent::Created | gio::FileMonitorEvent::Changed) {
+            if matches!(
+                ev,
+                gio::FileMonitorEvent::ChangesDoneHint
+                    | gio::FileMonitorEvent::Created
+                    | gio::FileMonitorEvent::Changed
+            ) {
                 let cfg = Config::load();
-                if let Ok(mut app) = a.try_borrow_mut() {
-                    if cfg != app.kb.config {
-                        let layouts = load_layouts(&cfg);
-                        let layout_ids: Vec<&str> = layouts.iter().map(|l| l.id.as_str()).collect();
-                        let lang_reload = layout_ids.join(",") != app.kb.config.layouts.join(",");
-                        if lang_reload {
-                            let langs = load_languages(&layouts);
-                            let mut e = Engine::new(langs, engine_settings(&cfg));
-                            std::mem::swap(&mut app.kb.engine, &mut e);
-                            e.save_user_data();
-                        }
-                        let old = app.kb.config.clone();
-                        if cfg.user_data_epoch != old.user_data_epoch {
-                            app.kb.engine.clear_user_data();
-                            panels::RECENTS.with(|r| r.borrow_mut().clear());
-                            clipboard::HISTORY.with(|h| h.borrow_mut().clear_all());
-                        } else if cfg.user_dict_epoch != old.user_dict_epoch {
-                            let dir = config::data_dir().join("user");
-                            for l in app.kb.engine.langs.iter_mut() {
-                                l.user = UserModel::load(&dir.join(format!("{}.tsv", l.code)));
-                            }
-                        }
-                        app.apply_config(cfg, layouts);
+                if let Ok(mut app) = a.try_borrow_mut()
+                    && cfg != app.kb.config
+                {
+                    let layouts = load_layouts(&cfg);
+                    let layout_ids: Vec<&str> = layouts.iter().map(|l| l.id.as_str()).collect();
+                    let lang_reload = layout_ids.join(",") != app.kb.config.layouts.join(",");
+                    if lang_reload {
+                        let langs = load_languages(&layouts);
+                        let mut e = Engine::new(langs, engine_settings(&cfg));
+                        std::mem::swap(&mut app.kb.engine, &mut e);
+                        e.save_user_data();
                     }
+                    let old = app.kb.config.clone();
+                    if cfg.user_data_epoch != old.user_data_epoch {
+                        app.kb.engine.clear_user_data();
+                        panels::RECENTS.with(|r| r.borrow_mut().clear());
+                        clipboard::HISTORY.with(|h| h.borrow_mut().clear_all());
+                    } else if cfg.user_dict_epoch != old.user_dict_epoch {
+                        let dir = config::data_dir().join("user");
+                        for l in app.kb.engine.langs.iter_mut() {
+                            l.user = UserModel::load(&dir.join(format!("{}.tsv", l.code)));
+                        }
+                    }
+                    app.apply_config(cfg, layouts);
                 }
             }
         });

@@ -48,11 +48,9 @@ pub fn tr(key: &str) -> &'static str {
             "Здесь появится скопированный текст. Долгое нажатие закрепляет элемент.",
             "Kopierter Text erscheint hier. Lange drücken zum Anheften.",
         ),
-        "clipboard-off" => (
-            "Clipboard history is off.",
-            "История буфера обмена выключена.",
-            "Der Zwischenablage-Verlauf ist aus.",
-        ),
+        "clipboard-off" => {
+            ("Clipboard history is off.", "История буфера обмена выключена.", "Der Zwischenablage-Verlauf ist aus.")
+        }
         "voice-listening" => ("Speak now…", "Говорите…", "Jetzt sprechen…"),
         "voice-processing" => ("Recognising…", "Распознаю…", "Wird erkannt…"),
         _ => return "?",

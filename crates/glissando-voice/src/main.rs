@@ -55,7 +55,12 @@ pub fn find_model(name: &str) -> Option<PathBuf> {
         dirs.push(PathBuf::from(d));
     }
     let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-    dirs.push(std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share")).join("glissando"));
+    dirs.push(
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".local/share"))
+            .join("glissando"),
+    );
     for d in std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into()).split(':') {
         dirs.push(Path::new(d).join("glissando"));
     }
@@ -65,7 +70,8 @@ pub fn find_model(name: &str) -> Option<PathBuf> {
             return Some(v.join(name));
         }
         if let Ok(rd) = std::fs::read_dir(&v) {
-            let mut models: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "bin").unwrap_or(false)).collect();
+            let mut models: Vec<PathBuf> =
+                rd.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "bin").unwrap_or(false)).collect();
             models.sort();
             if let Some(m) = models.into_iter().next() {
                 return Some(m);
@@ -135,7 +141,9 @@ fn drop_hallucinations(text: &str) -> String {
     }
     // Credits like "А.Синецкая" contain dots: judge by the whole text first.
     let lower = text.to_lowercase();
-    if HALLUCINATIONS.iter().any(|h| lower.contains(h)) && HALLUCINATIONS.iter().any(|h| lower.trim_start().starts_with(h)) {
+    if HALLUCINATIONS.iter().any(|h| lower.contains(h))
+        && HALLUCINATIONS.iter().any(|h| lower.trim_start().starts_with(h))
+    {
         return String::new();
     }
     out.into_iter()
@@ -238,7 +246,9 @@ fn main() {
                 if d2.load(Ordering::Relaxed) {
                     return;
                 }
-                s2.lock().unwrap().extend(chunk.chunks(2).filter(|c| c.len() == 2).map(|c| i16::from_le_bytes([c[0], c[1]])));
+                s2.lock()
+                    .unwrap()
+                    .extend(chunk.chunks(2).filter(|c| c.len() == 2).map(|c| i16::from_le_bytes([c[0], c[1]])));
                 std::thread::sleep(Duration::from_millis(100));
             }
         });
@@ -246,7 +256,13 @@ fn main() {
     let mut child = None;
     let recs = if args.input.is_some() { Vec::new() } else { recorders() };
     for cmd in recs {
-        if let Ok(c) = Command::new(&cmd[0]).args(&cmd[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
+        if let Ok(c) = Command::new(&cmd[0])
+            .args(&cmd[1..])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
             child = Some(c);
             break;
         }
@@ -261,22 +277,22 @@ fn main() {
         let s2 = samples.clone();
         let d2 = done.clone();
         std::thread::spawn(move || {
-        let mut buf = [0u8; 3200];
-        let mut carry: Option<u8> = None;
-        while !d2.load(Ordering::Relaxed) {
-            match out.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    let mut bytes: Vec<u8> = carry.take().into_iter().collect();
-                    bytes.extend_from_slice(&buf[..n]);
-                    if bytes.len() % 2 == 1 {
-                        carry = bytes.pop();
+            let mut buf = [0u8; 3200];
+            let mut carry: Option<u8> = None;
+            while !d2.load(Ordering::Relaxed) {
+                match out.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let mut bytes: Vec<u8> = carry.take().into_iter().collect();
+                        bytes.extend_from_slice(&buf[..n]);
+                        if bytes.len() % 2 == 1 {
+                            carry = bytes.pop();
+                        }
+                        let mut s = s2.lock().unwrap();
+                        s.extend(bytes.chunks(2).map(|c| i16::from_le_bytes([c[0], c[1]])));
                     }
-                    let mut s = s2.lock().unwrap();
-                    s.extend(bytes.chunks(2).map(|c| i16::from_le_bytes([c[0], c[1]])));
                 }
             }
-        }
         });
     }
     say("listening");

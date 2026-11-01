@@ -5,7 +5,7 @@
 use glissando_lang::dict::Dict;
 use glissando_lang::model::Language;
 use glissando_lang::user::UserModel;
-use glissando_swipe::{clean_trace_timed, KeyMap, ShapeDecoder};
+use glissando_swipe::{KeyMap, ShapeDecoder, clean_trace_timed};
 use std::io::BufRead;
 use std::time::Instant;
 
@@ -49,7 +49,11 @@ fn main() {
             .unwrap()
             .iter()
             .map(|p| {
-                (p["x"].as_f64().unwrap() as f32 * cw / kw, p["y"].as_f64().unwrap() as f32 * ch / kw, p["t"].as_f64().unwrap_or(0.0) as f32)
+                (
+                    p["x"].as_f64().unwrap() as f32 * cw / kw,
+                    p["y"].as_f64().unwrap() as f32 * ch / kw,
+                    p["t"].as_f64().unwrap_or(0.0) as f32,
+                )
             })
             .collect();
         let t0 = raw.first().map(|p| p.2).unwrap_or(0.0);

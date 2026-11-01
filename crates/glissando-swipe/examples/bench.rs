@@ -6,7 +6,7 @@ use glissando_core::layout::{Layout, SymbolSet};
 use glissando_lang::dict::Dict;
 use glissando_lang::model::Language;
 use glissando_lang::user::UserModel;
-use glissando_swipe::{synth_gesture, KeyMap, ShapeDecoder};
+use glissando_swipe::{KeyMap, ShapeDecoder, synth_gesture};
 use std::time::Instant;
 
 fn main() {
@@ -14,7 +14,8 @@ fn main() {
     let lang = args.get(1).map(|s| s.as_str()).unwrap_or("en");
     let n: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(300);
     let noise: f32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0.25);
-    let root = std::env::var("GLISSANDO_DATA_DIR").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../data").to_string());
+    let root = std::env::var("GLISSANDO_DATA_DIR")
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../data").to_string());
     let sym = SymbolSet::parse(&std::fs::read_to_string(format!("{root}/layouts/symbols.toml")).unwrap()).unwrap();
     let layout = Layout::parse(&std::fs::read_to_string(format!("{root}/layouts/{lang}.toml")).unwrap(), &sym).unwrap();
     let layer = layout.layer("letters").unwrap();

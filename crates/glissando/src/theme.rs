@@ -6,12 +6,7 @@ pub struct Rgba(pub f64, pub f64, pub f64, pub f64);
 
 impl Rgba {
     pub const fn hex(v: u32) -> Rgba {
-        Rgba(
-            ((v >> 16) & 0xff) as f64 / 255.0,
-            ((v >> 8) & 0xff) as f64 / 255.0,
-            (v & 0xff) as f64 / 255.0,
-            1.0,
-        )
+        Rgba(((v >> 16) & 0xff) as f64 / 255.0, ((v >> 8) & 0xff) as f64 / 255.0, (v & 0xff) as f64 / 255.0, 1.0)
     }
     pub const fn alpha(self, a: f64) -> Rgba {
         Rgba(self.0, self.1, self.2, a)

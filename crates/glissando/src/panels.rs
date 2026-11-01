@@ -1,11 +1,11 @@
 //! Full-keyboard panels: emoji picker, clipboard history and the quick menu.
 
 use crate::clipboard;
-use glissando_config::{Config, OneHanded, ThemeMode};
-use crate::emoji::{group_icon, EmojiDb, Recents};
+use crate::emoji::{EmojiDb, Recents, group_icon};
 use crate::i18n::tr;
 use crate::icons::Icon;
 use crate::render::{Panel, PanelCell};
+use glissando_config::{Config, OneHanded, ThemeMode};
 use glissando_core::geometry::Rect;
 use std::cell::{OnceCell, RefCell};
 
@@ -187,14 +187,12 @@ impl PanelState {
                 }
                 self.max_scroll = (y - c.bottom()).max(0.0);
                 // Footer: ABC, group tabs, backspace.
-                let tabs: Vec<(PanelCell, CellAction)> = std::iter::once((
-                    PanelCell::Icon { icon: Icon::Recent, active: false },
-                    CellAction::Recent,
-                ))
-                .chain(groups.iter().enumerate().map(|(gi, (g, _))| {
-                    (PanelCell::Tab { text: group_icon(g).to_string(), active: false }, CellAction::Group(gi))
-                }))
-                .collect();
+                let tabs: Vec<(PanelCell, CellAction)> =
+                    std::iter::once((PanelCell::Icon { icon: Icon::Recent, active: false }, CellAction::Recent))
+                        .chain(groups.iter().enumerate().map(|(gi, (g, _))| {
+                            (PanelCell::Tab { text: group_icon(g).to_string(), active: false }, CellAction::Group(gi))
+                        }))
+                        .collect();
                 let side = 52.0;
                 self.footer.push((
                     Rect::new(c.x, fy, side, FOOTER_H),
@@ -242,7 +240,11 @@ impl PanelState {
                 }
                 let rows = items.len().div_ceil(cols) as f32;
                 self.max_scroll = (rows * ch + 8.0 - c.h).max(0.0);
-                self.footer.push((Rect::new(c.x, fy, 72.0, FOOTER_H), PanelCell::Button { text: "ABC".into() }, CellAction::Close));
+                self.footer.push((
+                    Rect::new(c.x, fy, 72.0, FOOTER_H),
+                    PanelCell::Button { text: "ABC".into() },
+                    CellAction::Close,
+                ));
                 self.footer.push((
                     Rect::new(c.right() - 140.0, fy, 140.0, FOOTER_H),
                     PanelCell::Button { text: tr("clear").into() },
@@ -277,7 +279,11 @@ impl PanelState {
                     self.cells.push((r, PanelCell::Button { text }, CellAction::Toggle(item)));
                 }
                 self.max_scroll = 0.0;
-                self.footer.push((Rect::new(c.x, fy, 72.0, FOOTER_H), PanelCell::Button { text: "ABC".into() }, CellAction::Close));
+                self.footer.push((
+                    Rect::new(c.x, fy, 72.0, FOOTER_H),
+                    PanelCell::Button { text: "ABC".into() },
+                    CellAction::Close,
+                ));
             }
         }
     }
@@ -302,7 +308,9 @@ impl PanelState {
             .iter()
             .map(|(r, cell, act)| {
                 let cell = match cell {
-                    PanelCell::Tab { text, .. } => PanelCell::Tab { text: text.clone(), active: Some(act) == active.as_ref() },
+                    PanelCell::Tab { text, .. } => {
+                        PanelCell::Tab { text: text.clone(), active: Some(act) == active.as_ref() }
+                    }
                     PanelCell::Icon { icon, .. } if *act == CellAction::Recent => {
                         PanelCell::Icon { icon: *icon, active: Some(act) == active.as_ref() }
                     }
@@ -331,7 +339,8 @@ impl PanelState {
     pub fn down(&mut self, id: u32, _x: f32, y: f32, t: u32) {
         self.flinging = false;
         self.velocity = 0.0;
-        self.drag = Some(Drag { id, y0: y, scroll0: self.scroll, last_y: y, last_t: t, moved: false, long_pressed: false });
+        self.drag =
+            Some(Drag { id, y0: y, scroll0: self.scroll, last_y: y, last_t: t, moved: false, long_pressed: false });
         self.long_press_at = Some(t + 450);
     }
 
@@ -356,18 +365,18 @@ impl PanelState {
 
     /// Long press on a clipboard entry toggles its pin.
     pub fn tick(&mut self, now: u32) {
-        if let (Some(at), Some(d)) = (self.long_press_at, &mut self.drag) {
-            if now >= at && !d.moved {
-                d.long_pressed = true;
-                self.long_press_at = None;
-                if self.kind == PanelKind::Clipboard {
-                    if let Some((_, _, CellAction::Clip(text))) =
-                        self.cells.iter().find(|(r, _, _)| r.contains(r.x + 1.0, d.y0 + self.scroll)).cloned()
-                    {
-                        clipboard::HISTORY.with(|h| h.borrow_mut().toggle_pin(&text));
-                        self.build();
-                    }
-                }
+        if let (Some(at), Some(d)) = (self.long_press_at, &mut self.drag)
+            && now >= at
+            && !d.moved
+        {
+            d.long_pressed = true;
+            self.long_press_at = None;
+            if self.kind == PanelKind::Clipboard
+                && let Some((_, _, CellAction::Clip(text))) =
+                    self.cells.iter().find(|(r, _, _)| r.contains(r.x + 1.0, d.y0 + self.scroll)).cloned()
+            {
+                clipboard::HISTORY.with(|h| h.borrow_mut().toggle_pin(&text));
+                self.build();
             }
         }
         if self.flinging {

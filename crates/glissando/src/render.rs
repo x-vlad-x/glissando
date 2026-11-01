@@ -125,12 +125,12 @@ impl Renderer {
 
     /// Load the label and colour emoji fonts once, off the input path.
     pub fn warm_fonts(&self) {
-        if let Ok(s) = cairo::ImageSurface::create(cairo::Format::ARgb32, 64, 64) {
-            if let Ok(cr) = cairo::Context::new(&s) {
-                for t in ["Aa Яя ß", "😀👋🍕"] {
-                    let l = self.layout(&cr, t, 20.0, false);
-                    pangocairo::functions::show_layout(&cr, &l);
-                }
+        if let Ok(s) = cairo::ImageSurface::create(cairo::Format::ARgb32, 64, 64)
+            && let Ok(cr) = cairo::Context::new(&s)
+        {
+            for t in ["Aa Яя ß", "😀👋🍕"] {
+                let l = self.layout(&cr, t, 20.0, false);
+                pangocairo::functions::show_layout(&cr, &l);
             }
         }
     }
@@ -221,10 +221,10 @@ impl Renderer {
             }
         }
         self.draw_trail(&cr, view, theme);
-        if let Some((i, text)) = &view.preview {
-            if let Some(k) = view.keys.get(*i) {
-                self.draw_preview(&cr, k, text, theme, &view.metrics);
-            }
+        if let Some((i, text)) = &view.preview
+            && let Some(k) = view.keys.get(*i)
+        {
+            self.draw_preview(&cr, k, text, theme, &view.metrics);
         }
         if let Some(p) = &view.popup {
             self.draw_popup(&cr, p, theme, &view.metrics);
@@ -244,6 +244,7 @@ impl Renderer {
         layout
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn text_centered(&self, cr: &cairo::Context, text: &str, cx: f64, cy: f64, size: f32, bold: bool, max_w: f64) {
         let layout = self.layout(cr, text, size, bold);
         let (_, logical) = layout.pixel_extents();
@@ -355,7 +356,15 @@ impl Renderer {
             match item {
                 StripItem::Text { text, emphasized } => {
                     theme.strip_text.set(cr);
-                    self.text_centered(cr, text, cx as f64, cy as f64, m.strip_font_size, *emphasized, r.w as f64 - 10.0);
+                    self.text_centered(
+                        cr,
+                        text,
+                        cx as f64,
+                        cy as f64,
+                        m.strip_font_size,
+                        *emphasized,
+                        r.w as f64 - 10.0,
+                    );
                     if view.strip.dividers && i + 1 < n {
                         theme.strip_divider.set(cr);
                         cr.rectangle(r.right() as f64 - 0.5, r.y as f64 + r.h as f64 * 0.28, 1.0, r.h as f64 * 0.44);
@@ -401,7 +410,15 @@ impl Renderer {
         cr.fill().ok();
         theme.label.set(cr);
         let (cx, _) = r.center();
-        self.text_centered(cr, text, cx as f64, (r.y + r.h * 0.40) as f64, m.label_size * 1.35, false, r.w as f64 - 4.0);
+        self.text_centered(
+            cr,
+            text,
+            cx as f64,
+            (r.y + r.h * 0.40) as f64,
+            m.label_size * 1.35,
+            false,
+            r.w as f64 - 4.0,
+        );
     }
 
     fn draw_popup(&self, cr: &cairo::Context, p: &Popup, theme: &Theme, m: &Metrics) {
@@ -416,7 +433,14 @@ impl Renderer {
             let sel = p.selected == Some(i);
             if sel {
                 theme.popup_selected.set(cr);
-                icons::rounded(cr, cell.x as f64 + 2.0, cell.y as f64 + 2.0, cell.w as f64 - 4.0, cell.h as f64 - 4.0, m.radius as f64);
+                icons::rounded(
+                    cr,
+                    cell.x as f64 + 2.0,
+                    cell.y as f64 + 2.0,
+                    cell.w as f64 - 4.0,
+                    cell.h as f64 - 4.0,
+                    m.radius as f64,
+                );
                 cr.fill().ok();
             }
             if sel { theme.on_popup_selected } else { theme.label }.set(cr);
@@ -445,7 +469,14 @@ impl Renderer {
                 }
                 PanelCell::Text { text, secondary } => {
                     theme.key.set(cr);
-                    icons::rounded(cr, rect.x as f64 + 3.0, rect.y as f64 + 3.0, rect.w as f64 - 6.0, rect.h as f64 - 6.0, m.radius as f64);
+                    icons::rounded(
+                        cr,
+                        rect.x as f64 + 3.0,
+                        rect.y as f64 + 3.0,
+                        rect.w as f64 - 6.0,
+                        rect.h as f64 - 6.0,
+                        m.radius as f64,
+                    );
                     cr.fill().ok();
                     theme.label.set(cr);
                     let layout = self.layout(cr, text, m.small_label_size, false);
@@ -459,7 +490,10 @@ impl Renderer {
                         theme.hint.set(cr);
                         let l2 = self.layout(cr, s, m.hint_size, false);
                         let (_, lr) = l2.pixel_extents();
-                        cr.move_to((rect.right() - 10.0) as f64 - lr.width() as f64, (rect.bottom() - 8.0) as f64 - lr.height() as f64);
+                        cr.move_to(
+                            (rect.right() - 10.0) as f64 - lr.width() as f64,
+                            (rect.bottom() - 8.0) as f64 - lr.height() as f64,
+                        );
                         pangocairo::functions::show_layout(cr, &l2);
                     }
                 }
@@ -470,15 +504,37 @@ impl Renderer {
                 PanelCell::Tab { text, active } => {
                     if *active {
                         theme.key_function.set(cr);
-                        icons::rounded(cr, rect.x as f64 + 2.0, rect.y as f64 + 4.0, rect.w as f64 - 4.0, rect.h as f64 - 8.0, (rect.h as f64 - 8.0) / 2.0);
+                        icons::rounded(
+                            cr,
+                            rect.x as f64 + 2.0,
+                            rect.y as f64 + 4.0,
+                            rect.w as f64 - 4.0,
+                            rect.h as f64 - 8.0,
+                            (rect.h as f64 - 8.0) / 2.0,
+                        );
                         cr.fill().ok();
                     }
                     theme.label.set(cr);
-                    self.text_centered(cr, text, cx as f64, cy as f64, (rect.h * 0.5).min(22.0), false, rect.w as f64 - 4.0);
+                    self.text_centered(
+                        cr,
+                        text,
+                        cx as f64,
+                        cy as f64,
+                        (rect.h * 0.5).min(22.0),
+                        false,
+                        rect.w as f64 - 4.0,
+                    );
                 }
                 PanelCell::Button { text } => {
                     theme.key_function.set(cr);
-                    icons::rounded(cr, rect.x as f64 + 3.0, rect.y as f64 + 3.0, rect.w as f64 - 6.0, rect.h as f64 - 6.0, m.radius as f64);
+                    icons::rounded(
+                        cr,
+                        rect.x as f64 + 3.0,
+                        rect.y as f64 + 3.0,
+                        rect.w as f64 - 6.0,
+                        rect.h as f64 - 6.0,
+                        m.radius as f64,
+                    );
                     cr.fill().ok();
                     theme.label.set(cr);
                     self.text_centered(cr, text, cx as f64, cy as f64, m.small_label_size, false, rect.w as f64 - 10.0);
@@ -550,16 +606,34 @@ mod tests {
             height: 260.0,
             metrics: m,
             keys: vec![
-                KeyView { rect: Rect::new(4.0, 50.0, 30.0, 44.0), label: KeyLabel::Text("q".into()), hint: Some("1".into()), style: KeyStyle::Normal },
-                KeyView { rect: Rect::new(40.0, 50.0, 60.0, 44.0), label: KeyLabel::Icon(Icon::Backspace), hint: None, style: KeyStyle::Function },
-                KeyView { rect: Rect::new(110.0, 50.0, 60.0, 44.0), label: KeyLabel::Icon(Icon::Enter), hint: None, style: KeyStyle::Accent },
+                KeyView {
+                    rect: Rect::new(4.0, 50.0, 30.0, 44.0),
+                    label: KeyLabel::Text("q".into()),
+                    hint: Some("1".into()),
+                    style: KeyStyle::Normal,
+                },
+                KeyView {
+                    rect: Rect::new(40.0, 50.0, 60.0, 44.0),
+                    label: KeyLabel::Icon(Icon::Backspace),
+                    hint: None,
+                    style: KeyStyle::Function,
+                },
+                KeyView {
+                    rect: Rect::new(110.0, 50.0, 60.0, 44.0),
+                    label: KeyLabel::Icon(Icon::Enter),
+                    hint: None,
+                    style: KeyStyle::Accent,
+                },
             ],
             keys_rev: 1,
             pressed: vec![0],
             preview: Some((0, "q".into())),
             popup: None,
             strip: StripView {
-                items: vec![(Rect::new(0.0, 0.0, 120.0, 44.0), StripItem::Text { text: "hello".into(), emphasized: true })],
+                items: vec![(
+                    Rect::new(0.0, 0.0, 120.0, 44.0),
+                    StripItem::Text { text: "hello".into(), emphasized: true },
+                )],
                 dividers: true,
                 message: None,
             },

@@ -76,11 +76,8 @@ impl KeyAction {
             "comma" => KeyAction::Text(",".into()),
             "period" => KeyAction::Text(".".into()),
             _ => {
-                if let Some(layer) = name.strip_prefix("layer=") {
-                    KeyAction::Layer(layer.to_string())
-                } else {
-                    return None;
-                }
+                let layer = name.strip_prefix("layer=")?;
+                KeyAction::Layer(layer.to_string())
             }
         })
     }
@@ -95,11 +92,7 @@ impl KeyAction {
             KeyAction::Text(t) => {
                 let mut it = t.chars();
                 let c = it.next()?;
-                if it.next().is_none() && c.is_alphabetic() {
-                    Some(c)
-                } else {
-                    None
-                }
+                if it.next().is_none() && c.is_alphabetic() { Some(c) } else { None }
             }
             _ => None,
         }
@@ -219,10 +212,8 @@ impl Layout {
 
     /// Letters available on the main layer (lowercase), for swipe and the spatial model.
     pub fn alphabet(&self) -> Vec<char> {
-        let mut v: Vec<char> = self
-            .layer("letters")
-            .map(|l| l.keys().filter_map(|k| k.action.letter()).collect())
-            .unwrap_or_default();
+        let mut v: Vec<char> =
+            self.layer("letters").map(|l| l.keys().filter_map(|k| k.action.letter()).collect()).unwrap_or_default();
         v.dedup();
         v
     }
@@ -294,11 +285,8 @@ pub struct SymbolSet {
 impl SymbolSet {
     pub fn parse(src: &str) -> Result<SymbolSet, ParseError> {
         let f: FileSymbols = toml::from_str(src).map_err(|e| ParseError(e.to_string()))?;
-        let mut set = SymbolSet {
-            layers: BTreeMap::new(),
-            bottom_rows: f.bottom.clone(),
-            alternates: f.alternates.clone(),
-        };
+        let mut set =
+            SymbolSet { layers: BTreeMap::new(), bottom_rows: f.bottom.clone(), alternates: f.alternates.clone() };
         for (name, fl) in &f.layers {
             set.layers.insert(name.clone(), build_layer(fl, &f.alternates, &f.bottom)?);
         }
@@ -326,8 +314,7 @@ fn parse_token(tok: &str) -> Result<KeyDef, ParseError> {
             k.width = width;
             return Ok(k);
         }
-        let action = KeyAction::from_name(name)
-            .ok_or_else(|| ParseError(format!("unknown special key {{{name}}}")))?;
+        let action = KeyAction::from_name(name).ok_or_else(|| ParseError(format!("unknown special key {{{name}}}")))?;
         let mut k = KeyDef::special(action, width);
         if let KeyAction::Text(_) = k.action {
             k.style = KeyStyle::Normal;
@@ -343,15 +330,15 @@ fn parse_token(tok: &str) -> Result<KeyDef, ParseError> {
 
 fn split_width(tok: &str) -> Result<(&str, f32), ParseError> {
     // A trailing `:<number>` is a width; a lone ':' is the colon key.
-    if let Some(pos) = tok.rfind(':') {
-        if pos > 0 {
-            let (name, w) = (&tok[..pos], &tok[pos + 1..]);
-            if w == "*" {
-                return Ok((name, FILL));
-            }
-            if let Ok(w) = w.parse::<f32>() {
-                return Ok((name, w));
-            }
+    if let Some(pos) = tok.rfind(':')
+        && pos > 0
+    {
+        let (name, w) = (&tok[..pos], &tok[pos + 1..]);
+        if w == "*" {
+            return Ok((name, FILL));
+        }
+        if let Ok(w) = w.parse::<f32>() {
+            return Ok((name, w));
         }
     }
     Ok((tok, 1.0))
@@ -384,31 +371,27 @@ fn build_layer(
             let mut hi = 0;
             for k in keys.iter_mut() {
                 if k.action.is_text() {
-                    if let Some(h) = hints.get(hi) {
-                        if *h != "_" {
-                            k.hint = Some(h.to_string());
-                        }
+                    if let Some(h) = hints.get(hi)
+                        && *h != "_"
+                    {
+                        k.hint = Some(h.to_string());
                     }
                     hi += 1;
                 }
             }
         }
         for k in keys.iter_mut() {
-            if let KeyAction::Text(t) = &k.action {
-                if let Some(spec) = alternates.get(t.as_str()) {
-                    k.alternates = split_alternates(spec);
-                }
+            if let KeyAction::Text(t) = &k.action
+                && let Some(spec) = alternates.get(t.as_str())
+            {
+                k.alternates = split_alternates(spec);
             }
         }
         layer.rows.push(RowDef { keys, height: fr.height.unwrap_or(1.0) });
     }
     // Resolve fill widths against the widest row without fill keys.
-    let target = layer
-        .rows
-        .iter()
-        .filter(|r| r.keys.iter().all(|k| k.width != FILL))
-        .map(|r| r.units())
-        .fold(0.0, f32::max);
+    let target =
+        layer.rows.iter().filter(|r| r.keys.iter().all(|k| k.width != FILL)).map(|r| r.units()).fold(0.0, f32::max);
     for row in layer.rows.iter_mut() {
         let fills = row.keys.iter().filter(|k| k.width == FILL).count();
         if fills > 0 {
@@ -434,13 +417,18 @@ impl Layout {
             layers.insert(name.clone(), build_layer(fl, &alternates, &symbols.bottom_rows)?);
             // Purpose specific variants (email/url fields) reuse the rows with another bottom row.
             if let Some(bottom) = &fl.bottom {
-                for (tname, _) in symbols.bottom_rows.iter() {
+                for tname in symbols.bottom_rows.keys() {
                     if let Some(variant) = tname.strip_prefix(&format!("{bottom}_")) {
                         let vl = FileLayer {
-                            rows: fl.rows.iter().map(|r| FileRow { keys: r.keys.clone(), hints: r.hints.clone(), height: r.height }).collect(),
+                            rows: fl
+                                .rows
+                                .iter()
+                                .map(|r| FileRow { keys: r.keys.clone(), hints: r.hints.clone(), height: r.height })
+                                .collect(),
                             bottom: Some(tname.clone()),
                         };
-                        layers.insert(format!("{name}@{variant}"), build_layer(&vl, &alternates, &symbols.bottom_rows)?);
+                        layers
+                            .insert(format!("{name}@{variant}"), build_layer(&vl, &alternates, &symbols.bottom_rows)?);
                     }
                 }
             }
@@ -451,14 +439,7 @@ impl Layout {
         if !layers.contains_key("letters") {
             return Err(ParseError(format!("layout {} has no letters layer", f.id)));
         }
-        Ok(Layout {
-            id: f.id,
-            name: f.name,
-            short: f.short,
-            languages: f.languages,
-            swipe: f.swipe,
-            layers,
-        })
+        Ok(Layout { id: f.id, name: f.name, short: f.short, languages: f.languages, swipe: f.swipe, layers })
     }
 }
 

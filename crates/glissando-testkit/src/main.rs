@@ -18,8 +18,10 @@
 use std::collections::HashMap;
 use std::os::fd::AsFd;
 use std::time::{Duration, Instant};
-use wayland_client::globals::{registry_queue_init, GlobalListContents};
-use wayland_client::protocol::{wl_buffer, wl_compositor, wl_keyboard, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface, wl_pointer, wl_output};
+use wayland_client::globals::{GlobalListContents, registry_queue_init};
+use wayland_client::protocol::{
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols::wp::text_input::zv3::client::{zwp_text_input_manager_v3, zwp_text_input_v3};
 use wayland_protocols::xdg::shell::client::{xdg_surface, xdg_toplevel, xdg_wm_base};
@@ -133,7 +135,11 @@ impl Client {
                 108 => "Down".into(),
                 other => self.keymap.get(&other).map(|c| c.to_string()).unwrap_or_else(|| format!("#{other}")),
             };
-            let tag = format!("<{}{}{name}>", if self.mods & 4 != 0 { "C-" } else { "" }, if self.mods & 8 != 0 { "A-" } else { "" });
+            let tag = format!(
+                "<{}{}{name}>",
+                if self.mods & 4 != 0 { "C-" } else { "" },
+                if self.mods & 8 != 0 { "A-" } else { "" }
+            );
             self.text.insert_str(self.cursor, &tag);
             self.cursor += tag.len();
             self.write_state();
@@ -198,10 +204,10 @@ impl Client {
 
     fn external_change(&mut self) {
         // Cursor moves are external changes for the input method.
-        if let Some(ti) = &self.ti {
-            if self.send_cause {
-                ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::Other);
-            }
+        if let Some(ti) = &self.ti
+            && self.send_cause
+        {
+            ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::Other);
         }
         self.send_state();
     }
@@ -227,7 +233,15 @@ impl Client {
 }
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Client {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 macro_rules! noop {
@@ -242,7 +256,14 @@ noop!(Client; wl_compositor::WlCompositor, wl_shm::WlShm, wl_shm_pool::WlShmPool
     zwp_text_input_manager_v3::ZwpTextInputManagerV3, xdg_toplevel::XdgToplevel);
 
 impl Dispatch<wl_pointer::WlPointer, ()> for Client {
-    fn event(c: &mut Self, _: &wl_pointer::WlPointer, e: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        c: &mut Self,
+        _: &wl_pointer::WlPointer,
+        e: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_pointer::Event::Button { state: WEnum::Value(wl_pointer::ButtonState::Pressed), .. } = e {
             c.click();
         }
@@ -250,7 +271,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Client {
 }
 
 impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Client {
-    fn event(_: &mut Self, b: &xdg_wm_base::XdgWmBase, e: xdg_wm_base::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        b: &xdg_wm_base::XdgWmBase,
+        e: xdg_wm_base::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let xdg_wm_base::Event::Ping { serial } = e {
             b.pong(serial);
         }
@@ -258,7 +286,14 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for Client {
 }
 
 impl Dispatch<xdg_surface::XdgSurface, ()> for Client {
-    fn event(c: &mut Self, s: &xdg_surface::XdgSurface, e: xdg_surface::Event, _: &(), _: &Connection, qh: &QueueHandle<Self>) {
+    fn event(
+        c: &mut Self,
+        s: &xdg_surface::XdgSurface,
+        e: xdg_surface::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
         if let xdg_surface::Event::Configure { serial } = e {
             s.ack_configure(serial);
             c.configured = true;
@@ -289,10 +324,10 @@ fn parse_keymap(text: &str) -> HashMap<u32, char> {
         if let Some(rest) = l.strip_prefix("key <I") {
             let code: Option<u32> = rest.split('>').next().and_then(|n| n.parse().ok());
             let sym = rest.split('[').nth(1).and_then(|s| s.split(']').next()).map(|s| s.trim());
-            if let (Some(code), Some(sym)) = (code, sym) {
-                if let Some(ch) = keysym_char(sym) {
-                    m.insert(code - 8, ch);
-                }
+            if let (Some(code), Some(sym)) = (code, sym)
+                && let Some(ch) = keysym_char(sym)
+            {
+                m.insert(code - 8, ch);
             }
         }
     }
@@ -314,7 +349,14 @@ fn keysym_char(sym: &str) -> Option<char> {
 }
 
 impl Dispatch<wl_keyboard::WlKeyboard, ()> for Client {
-    fn event(c: &mut Self, _: &wl_keyboard::WlKeyboard, e: wl_keyboard::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        c: &mut Self,
+        _: &wl_keyboard::WlKeyboard,
+        e: wl_keyboard::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match e {
             wl_keyboard::Event::Keymap { fd, size, .. } => {
                 // The descriptor may share its file offset with earlier ones.
@@ -340,21 +382,34 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Client {
 }
 
 impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for Client {
-    fn event(c: &mut Self, _: &zwp_text_input_v3::ZwpTextInputV3, e: zwp_text_input_v3::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        c: &mut Self,
+        _: &zwp_text_input_v3::ZwpTextInputV3,
+        e: zwp_text_input_v3::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         use zwp_text_input_v3::Event;
         match e {
             Event::PreeditString { text, cursor_begin, cursor_end } => {
                 c.pending.preedit = Some((text.unwrap_or_default(), cursor_begin, cursor_end))
             }
             Event::CommitString { text } => c.pending.commit = Some(text.unwrap_or_default()),
-            Event::DeleteSurroundingText { before_length, after_length } => c.pending.delete = Some((before_length, after_length)),
+            Event::DeleteSurroundingText { before_length, after_length } => {
+                c.pending.delete = Some((before_length, after_length))
+            }
             Event::Done { serial } => {
-                eprintln!("tc: done {serial} preedit={:?} commit={:?}", c.pending.preedit.as_ref().map(|p| p.0.len()), c.pending.commit.as_ref().map(|s| s.len()));
+                eprintln!(
+                    "tc: done {serial} preedit={:?} commit={:?}",
+                    c.pending.preedit.as_ref().map(|p| p.0.len()),
+                    c.pending.commit.as_ref().map(|s| s.len())
+                );
                 c.serial = serial;
-                if let Some(ti) = &c.ti {
-                    if c.send_cause {
-                        ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::InputMethod);
-                    }
+                if let Some(ti) = &c.ti
+                    && c.send_cause
+                {
+                    ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::InputMethod);
                 }
                 c.apply_done();
             }
@@ -474,7 +529,15 @@ struct Ptr {
 noop!(Ptr; zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1, zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1);
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Ptr {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 impl Dispatch<wl_seat::WlSeat, ()> for Ptr {
@@ -482,12 +545,19 @@ impl Dispatch<wl_seat::WlSeat, ()> for Ptr {
 }
 
 impl Dispatch<wl_output::WlOutput, ()> for Ptr {
-    fn event(p: &mut Self, o: &wl_output::WlOutput, e: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
-        if let wl_output::Event::Mode { width, height, .. } = e {
-            if let Some(x) = p.outputs.iter_mut().find(|x| &x.0 == o) {
-                x.1 = width;
-                x.2 = height;
-            }
+    fn event(
+        p: &mut Self,
+        o: &wl_output::WlOutput,
+        e: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_output::Event::Mode { width, height, .. } = e
+            && let Some(x) = p.outputs.iter_mut().find(|x| &x.0 == o)
+        {
+            x.1 = width;
+            x.2 = height;
         }
     }
 }
@@ -499,7 +569,8 @@ fn pointer_server(extent: (u32, u32)) {
     let (globals, mut q) = registry_queue_init::<Ptr>(&conn).unwrap();
     let qh = q.handle();
     let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=5, ()).unwrap();
-    let mgr: zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1 = globals.bind(&qh, 1..=2, ()).expect("virtual pointer");
+    let mgr: zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1 =
+        globals.bind(&qh, 1..=2, ()).expect("virtual pointer");
     let vp = mgr.create_virtual_pointer(Some(&seat), &qh, ());
     let mut st = Ptr { outputs: Vec::new() };
     q.roundtrip(&mut st).unwrap();
@@ -519,7 +590,8 @@ fn pointer(script: &str, extent: (u32, u32)) {
     let (globals, mut q) = registry_queue_init::<Ptr>(&conn).unwrap();
     let qh = q.handle();
     let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=5, ()).unwrap();
-    let mgr: zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1 = globals.bind(&qh, 1..=2, ()).expect("virtual pointer");
+    let mgr: zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1 =
+        globals.bind(&qh, 1..=2, ()).expect("virtual pointer");
     let vp = mgr.create_virtual_pointer(Some(&seat), &qh, ());
     let mut st = Ptr { outputs: Vec::new() };
     q.roundtrip(&mut st).unwrap();
@@ -528,7 +600,13 @@ fn pointer(script: &str, extent: (u32, u32)) {
     q.roundtrip(&mut st).unwrap();
 }
 
-fn run_script(conn: &Connection, vp: &zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1, t0: &Instant, script: &str, extent: (u32, u32)) {
+fn run_script(
+    conn: &Connection,
+    vp: &zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1,
+    t0: &Instant,
+    script: &str,
+    extent: (u32, u32),
+) {
     let now = || t0.elapsed().as_millis() as u32;
     let (ew, eh) = extent;
     let move_to = |x: f64, y: f64| {
@@ -620,7 +698,9 @@ fn main() {
             pointer(&args[2..].join(" "), extent)
         }
         _ => {
-            eprintln!("usage: glissando-testkit textclient [--purpose P] [--hint H] [--state FILE] [--toolkit qt] [--app-id ID] | pointer SCRIPT");
+            eprintln!(
+                "usage: glissando-testkit textclient [--purpose P] [--hint H] [--state FILE] [--toolkit qt] [--app-id ID] | pointer SCRIPT"
+            );
             std::process::exit(2);
         }
     }

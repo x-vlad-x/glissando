@@ -6,3 +6,4 @@
 /data/dict/*.gld
 !/data/dict/README.md
 /dist
+__pycache__/

@@ -3,12 +3,12 @@
 //! monitoring. Everything runs on the glib main loop.
 
 use crate::clipboard;
-use glissando_config::{Config, ThemeMode};
 use crate::dbus::{self, Haptics, OskService};
 use crate::keyboard::{Action, ChordKey, Haptic, Keyboard, Mods};
 use crate::render::Renderer;
 use crate::theme::Theme;
-use crate::vk::{Keymap, VkKey, MOD_ALT, MOD_CTRL};
+use crate::vk::{Keymap, MOD_ALT, MOD_CTRL, VkKey};
+use glissando_config::{Config, ThemeMode};
 use glissando_lang::engine::{FieldInfo, Key, Op, Purpose};
 use std::cell::RefCell;
 use std::io::Read;
@@ -17,7 +17,7 @@ use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use wayland_client::globals::{registry_queue_init, GlobalListContents};
+use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{
     wl_buffer, wl_callback, wl_compositor, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm, wl_shm_pool,
     wl_surface, wl_touch,
@@ -27,11 +27,15 @@ use wayland_protocols::wp::fractional_scale::v1::client::{wp_fractional_scale_ma
 use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{ContentHint, ContentPurpose};
 use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_misc::zwp_input_method_v2::client::{zwp_input_method_manager_v2, zwp_input_method_v2};
-use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{zwp_virtual_keyboard_manager_v1, zwp_virtual_keyboard_v1};
+use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
+    zwp_virtual_keyboard_manager_v1, zwp_virtual_keyboard_v1,
+};
 use wayland_protocols_wlr::data_control::v1::client::{
     zwlr_data_control_device_v1, zwlr_data_control_manager_v1, zwlr_data_control_offer_v1,
 };
-use wayland_protocols_wlr::foreign_toplevel::v1::client::{zwlr_foreign_toplevel_handle_v1, zwlr_foreign_toplevel_manager_v1};
+use wayland_protocols_wlr::foreign_toplevel::v1::client::{
+    zwlr_foreign_toplevel_handle_v1, zwlr_foreign_toplevel_manager_v1,
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 fn debug() -> bool {
@@ -187,7 +191,11 @@ impl App {
         self.haptics.strength = config.haptic_strength as f64;
         self.haptics.ms = config.haptic_ms;
         clipboard::HISTORY.with(|h| {
-            h.borrow_mut().configure(config.clipboard_history, config.clipboard_hours, Some(glissando_config::state_dir().join("pinned-clips")))
+            h.borrow_mut().configure(
+                config.clipboard_history,
+                config.clipboard_hours,
+                Some(glissando_config::state_dir().join("pinned-clips")),
+            )
         });
         self.kb.engine.settings = crate::engine_settings(&config);
         self.kb.set_config(config, layouts);
@@ -296,13 +304,13 @@ impl App {
 
     fn update_height(&mut self) {
         let h = self.kb.desired_height() as u32;
-        if let Some(s) = &mut self.surface {
-            if s.height != h {
-                s.layer.set_size(0, h);
-                s.layer.set_exclusive_zone(h as i32);
-                s.surface.commit();
-                s.height = h;
-            }
+        if let Some(s) = &mut self.surface
+            && s.height != h
+        {
+            s.layer.set_size(0, h);
+            s.layer.set_exclusive_zone(h as i32);
+            s.surface.commit();
+            s.height = h;
         }
         self.write_geometry();
     }
@@ -390,7 +398,13 @@ impl App {
             // SAFETY: the mapping outlives the cairo surface, which is dropped
             // before the buffer is handed to the compositor.
             let surf = unsafe {
-                cairo::ImageSurface::create_for_data_unsafe(buf.map.as_mut_ptr(), cairo::Format::ARgb32, buf.w, buf.h, stride)
+                cairo::ImageSurface::create_for_data_unsafe(
+                    buf.map.as_mut_ptr(),
+                    cairo::Format::ARgb32,
+                    buf.w,
+                    buf.h,
+                    stride,
+                )
             };
             if let Ok(surf) = surf {
                 let t0 = Instant::now();
@@ -435,17 +449,17 @@ impl App {
         }
         let me = self.me.clone();
         self.prewarm = Some(glib::idle_add_local_full(glib::Priority::LOW, move || {
-            if let Some(app) = me.upgrade() {
-                if let Ok(mut app) = app.try_borrow_mut() {
-                    app.prewarm = None;
-                    if app.kb_busy() {
-                        return glib::ControlFlow::Break;
-                    }
-                    let now = app.now();
-                    if let Some(v) = app.kb.alternate_view(now) {
-                        let theme = app.theme.clone();
-                        app.renderer.prewarm(bw, bh, scale, &v, &theme);
-                    }
+            if let Some(app) = me.upgrade()
+                && let Ok(mut app) = app.try_borrow_mut()
+            {
+                app.prewarm = None;
+                if app.kb_busy() {
+                    return glib::ControlFlow::Break;
+                }
+                let now = app.now();
+                if let Some(v) = app.kb.alternate_view(now) {
+                    let theme = app.theme.clone();
+                    app.renderer.prewarm(bw, bh, scale, &v, &theme);
                 }
             }
             glib::ControlFlow::Break
@@ -631,7 +645,8 @@ impl App {
         let mut preedit: Option<String> = None;
         let flush = |app: &mut App, commit: &mut String, delete: &mut Option<usize>, preedit: &mut Option<String>| {
             let Some(im) = &app.im else { return };
-            if commit.is_empty() && delete.is_none() && preedit.as_ref().map(|p| *p == app.last_preedit).unwrap_or(true) {
+            if commit.is_empty() && delete.is_none() && preedit.as_ref().map(|p| *p == app.last_preedit).unwrap_or(true)
+            {
                 *preedit = None;
                 return;
             }
@@ -711,7 +726,8 @@ impl App {
                     self.update_visibility();
                 }
                 Action::OpenSettings => {
-                    let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("glissando-settings")));
+                    let exe =
+                        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("glissando-settings")));
                     let cmd = exe.filter(|p| p.exists()).unwrap_or_else(|| "glissando-settings".into());
                     if let Err(e) = std::process::Command::new(cmd).env_remove("DESKTOP_AUTOSTART_ID").spawn() {
                         eprintln!("glissando: cannot start settings: {e}");
@@ -895,7 +911,8 @@ impl App {
             offer.destroy();
             return;
         }
-        let sensitive = mimes.iter().any(|m| m.contains("passwordManagerHint") || m.contains("x-kde-passwordManagerHint"));
+        let sensitive =
+            mimes.iter().any(|m| m.contains("passwordManagerHint") || m.contains("x-kde-passwordManagerHint"));
         let mime = ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"]
             .iter()
             .find(|m| mimes.iter().any(|x| x == *m))
@@ -960,10 +977,13 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         globals.bind(&qh, 1..=4, ()).map_err(|_| "compositor lacks wlr-layer-shell".to_string())?;
     let seat: Option<wl_seat::WlSeat> = globals.bind(&qh, 1..=7, ()).ok();
     let im_mgr: Option<zwp_input_method_manager_v2::ZwpInputMethodManagerV2> = globals.bind(&qh, 1..=1, ()).ok();
-    let vk_mgr: Option<zwp_virtual_keyboard_manager_v1::ZwpVirtualKeyboardManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
+    let vk_mgr: Option<zwp_virtual_keyboard_manager_v1::ZwpVirtualKeyboardManagerV1> =
+        globals.bind(&qh, 1..=1, ()).ok();
     let viewporter: Option<wp_viewporter::WpViewporter> = globals.bind(&qh, 1..=1, ()).ok();
-    let fractional: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
-    let data_control: Option<zwlr_data_control_manager_v1::ZwlrDataControlManagerV1> = globals.bind(&qh, 1..=2, ()).ok();
+    let fractional: Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1> =
+        globals.bind(&qh, 1..=1, ()).ok();
+    let data_control: Option<zwlr_data_control_manager_v1::ZwlrDataControlManagerV1> =
+        globals.bind(&qh, 1..=2, ()).ok();
     let toplevel_manager: Option<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1> =
         globals.bind(&qh, 1..=3, ()).ok();
     if toplevel_manager.is_none() {
@@ -989,7 +1009,11 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
     haptics.strength = config.haptic_strength as f64;
     haptics.ms = config.haptic_ms;
     clipboard::HISTORY.with(|h| {
-        h.borrow_mut().configure(config.clipboard_history, config.clipboard_hours, Some(glissando_config::state_dir().join("pinned-clips")))
+        h.borrow_mut().configure(
+            config.clipboard_history,
+            config.clipboard_hours,
+            Some(glissando_config::state_dir().join("pinned-clips")),
+        )
     });
     let app = Rc::new(RefCell::new(App {
         conn: conn.clone(),
@@ -1050,27 +1074,27 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         let osk = OskService::start(
             opts.replace,
             move |v| {
-                if let Some(a) = w1.upgrade() {
-                    if let Ok(mut a) = a.try_borrow_mut() {
-                        a.set_visible_request(v);
-                    }
+                if let Some(a) = w1.upgrade()
+                    && let Ok(mut a) = a.try_borrow_mut()
+                {
+                    a.set_visible_request(v);
                 }
             },
             move || {
                 eprintln!("glissando: lost sm.puri.OSK0 (replaced by another keyboard or no session bus)");
-                if let Some(a) = w2.upgrade() {
-                    if let Ok(mut a) = a.try_borrow_mut() {
-                        a.quit = true;
-                    }
+                if let Some(a) = w2.upgrade()
+                    && let Ok(mut a) = a.try_borrow_mut()
+                {
+                    a.quit = true;
                 }
             },
             // gnome-session's Stop goes through the same exit as a signal, so
             // the words learned since the last timed save are kept.
             move || {
-                if let Some(a) = w3.upgrade() {
-                    if let Ok(mut a) = a.try_borrow_mut() {
-                        a.quit = true;
-                    }
+                if let Some(a) = w3.upgrade()
+                    && let Ok(mut a) = a.try_borrow_mut()
+                {
+                    a.quit = true;
                 }
             },
         );
@@ -1087,10 +1111,10 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
     {
         let w = Rc::downgrade(&app);
         glib::idle_add_local_full(glib::Priority::LOW, move || {
-            if let Some(a) = w.upgrade() {
-                if let Ok(a) = a.try_borrow() {
-                    a.renderer.warm_fonts();
-                }
+            if let Some(a) = w.upgrade()
+                && let Ok(a) = a.try_borrow()
+            {
+                a.renderer.warm_fonts();
             }
             glib::ControlFlow::Break
         });
@@ -1099,37 +1123,48 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
     let fd = conn.backend().poll_fd().as_raw_fd();
     let app2 = app.clone();
     let conn2 = conn.clone();
-    glib_unix::unix_fd_add_local(fd, glib::IOCondition::IN | glib::IOCondition::ERR | glib::IOCondition::HUP, move |_, cond| {
-        let mut q = queue.borrow_mut();
-        if let Some(guard) = q.prepare_read() {
-            if let Err(e) = guard.read() {
-                if !matches!(&e, wayland_client::backend::WaylandError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock) {
-                    eprintln!("glissando: Wayland connection error: {e}");
-                    app2.borrow_mut().quit = true;
-                    return glib::ControlFlow::Break;
-                }
+    glib_unix::unix_fd_add_local(
+        fd,
+        glib::IOCondition::IN | glib::IOCondition::ERR | glib::IOCondition::HUP,
+        move |_, cond| {
+            let mut q = queue.borrow_mut();
+            if let Some(guard) = q.prepare_read()
+                && let Err(e) = guard.read()
+                && !matches!(&e, wayland_client::backend::WaylandError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock)
+            {
+                eprintln!("glissando: Wayland connection error: {e}");
+                app2.borrow_mut().quit = true;
+                return glib::ControlFlow::Break;
             }
-        }
-        let mut a = app2.borrow_mut();
-        if let Err(e) = q.dispatch_pending(&mut a) {
-            eprintln!("glissando: protocol error: {e}");
-            a.quit = true;
-            return glib::ControlFlow::Break;
-        }
-        let _ = conn2.flush();
-        if cond.contains(glib::IOCondition::HUP) || cond.contains(glib::IOCondition::ERR) {
-            a.quit = true;
-            return glib::ControlFlow::Break;
-        }
-        glib::ControlFlow::Continue
-    });
+            let mut a = app2.borrow_mut();
+            if let Err(e) = q.dispatch_pending(&mut a) {
+                eprintln!("glissando: protocol error: {e}");
+                a.quit = true;
+                return glib::ControlFlow::Break;
+            }
+            let _ = conn2.flush();
+            if cond.contains(glib::IOCondition::HUP) || cond.contains(glib::IOCondition::ERR) {
+                a.quit = true;
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        },
+    );
     Ok(app)
 }
 
 // ---- dispatch implementations ------------------------------------------------
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for App {
-    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event, _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &wl_registry::WlRegistry,
+        _: wl_registry::Event,
+        _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
 }
 
 macro_rules! ignore_events {
@@ -1155,7 +1190,14 @@ ignore_events!(
 );
 
 impl Dispatch<wl_buffer::WlBuffer, Arc<AtomicBool>> for App {
-    fn event(app: &mut Self, _: &wl_buffer::WlBuffer, e: wl_buffer::Event, busy: &Arc<AtomicBool>, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &wl_buffer::WlBuffer,
+        e: wl_buffer::Event,
+        busy: &Arc<AtomicBool>,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_buffer::Event::Release = e {
             busy.store(false, Ordering::Release);
             if app.dirty {
@@ -1166,7 +1208,14 @@ impl Dispatch<wl_buffer::WlBuffer, Arc<AtomicBool>> for App {
 }
 
 impl Dispatch<wl_callback::WlCallback, ()> for App {
-    fn event(app: &mut Self, _: &wl_callback::WlCallback, e: wl_callback::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &wl_callback::WlCallback,
+        e: wl_callback::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wl_callback::Event::Done { .. } = e {
             app.frame_done();
         }
@@ -1174,17 +1223,31 @@ impl Dispatch<wl_callback::WlCallback, ()> for App {
 }
 
 impl Dispatch<wl_output::WlOutput, ()> for App {
-    fn event(app: &mut Self, o: &wl_output::WlOutput, e: wl_output::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
-        if let wl_output::Event::Scale { factor } = e {
-            if let Some(entry) = app.outputs.iter_mut().find(|x| &x.0 == o) {
-                entry.1 = factor;
-            }
+    fn event(
+        app: &mut Self,
+        o: &wl_output::WlOutput,
+        e: wl_output::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_output::Event::Scale { factor } = e
+            && let Some(entry) = app.outputs.iter_mut().find(|x| &x.0 == o)
+        {
+            entry.1 = factor;
         }
     }
 }
 
 impl Dispatch<wl_surface::WlSurface, ()> for App {
-    fn event(app: &mut Self, _: &wl_surface::WlSurface, e: wl_surface::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &wl_surface::WlSurface,
+        e: wl_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         let mut changed = false;
         match e {
             wl_surface::Event::PreferredBufferScale { factor } => {
@@ -1195,11 +1258,11 @@ impl Dispatch<wl_surface::WlSurface, ()> for App {
             }
             wl_surface::Event::Enter { output } => {
                 let f = app.outputs.iter().find(|x| x.0 == output).map(|x| x.1).unwrap_or(1);
-                if let Some(s) = &mut app.surface {
-                    if f > s.int_scale {
-                        s.int_scale = f;
-                        changed = true;
-                    }
+                if let Some(s) = &mut app.surface
+                    && f > s.int_scale
+                {
+                    s.int_scale = f;
+                    changed = true;
                 }
             }
             _ => {}
@@ -1211,7 +1274,14 @@ impl Dispatch<wl_surface::WlSurface, ()> for App {
 }
 
 impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for App {
-    fn event(app: &mut Self, _: &wp_fractional_scale_v1::WpFractionalScaleV1, e: wp_fractional_scale_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &wp_fractional_scale_v1::WpFractionalScaleV1,
+        e: wp_fractional_scale_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let wp_fractional_scale_v1::Event::PreferredScale { scale } = e {
             if let Some(s) = &mut app.surface {
                 s.scale120 = scale;
@@ -1222,7 +1292,14 @@ impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for App {
 }
 
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for App {
-    fn event(app: &mut Self, l: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, e: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        l: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+        e: zwlr_layer_surface_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match e {
             zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
                 l.ack_configure(serial);
@@ -1252,7 +1329,14 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for App {
 }
 
 impl Dispatch<wl_seat::WlSeat, ()> for App {
-    fn event(app: &mut Self, seat: &wl_seat::WlSeat, e: wl_seat::Event, _: &(), _: &Connection, qh: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        seat: &wl_seat::WlSeat,
+        e: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
         if let wl_seat::Event::Capabilities { capabilities: WEnum::Value(caps) } = e {
             dlog!("seat capabilities {caps:?}");
             if caps.contains(wl_seat::Capability::Touch) {
@@ -1305,7 +1389,8 @@ impl Dispatch<wl_touch::WlTouch, ()> for App {
                 app.kb.touch_motion(id as u32, x as f32, y as f32, now)
             }
             wl_touch::Event::Up { id, .. } => {
-                let (x, y) = app.touch_pos.iter().find(|t| t.0 == id as u32).map(|t| (t.1, t.2)).unwrap_or((-1.0, -1.0));
+                let (x, y) =
+                    app.touch_pos.iter().find(|t| t.0 == id as u32).map(|t| (t.1, t.2)).unwrap_or((-1.0, -1.0));
                 app.touch_pos.retain(|t| t.0 != id as u32);
                 app.kb.touch_up(id as u32, x, y, now);
             }
@@ -1321,7 +1406,14 @@ impl Dispatch<wl_touch::WlTouch, ()> for App {
 }
 
 impl Dispatch<wl_pointer::WlPointer, ()> for App {
-    fn event(app: &mut Self, _: &wl_pointer::WlPointer, e: wl_pointer::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &wl_pointer::WlPointer,
+        e: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         let now = app.now();
         match e {
             wl_pointer::Event::Enter { surface_x, surface_y, .. } => {
@@ -1370,7 +1462,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
 }
 
 impl Dispatch<zwp_input_method_v2::ZwpInputMethodV2, ()> for App {
-    fn event(app: &mut Self, _: &zwp_input_method_v2::ZwpInputMethodV2, e: zwp_input_method_v2::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &zwp_input_method_v2::ZwpInputMethodV2,
+        e: zwp_input_method_v2::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         use zwp_input_method_v2::Event;
         match e {
             Event::Activate => {
@@ -1378,7 +1477,9 @@ impl Dispatch<zwp_input_method_v2::ZwpInputMethodV2, ()> for App {
                 app.im_pending = ImState { active: true, ..Default::default() };
             }
             Event::Deactivate => app.im_pending.active = false,
-            Event::SurroundingText { text, cursor, anchor } => app.im_pending.surrounding = Some((text, cursor, anchor)),
+            Event::SurroundingText { text, cursor, anchor } => {
+                app.im_pending.surrounding = Some((text, cursor, anchor))
+            }
             // Not reliable across toolkits (Qt never sets it); the engine
             // compares the text instead.
             Event::TextChangeCause { .. } => {}
@@ -1397,7 +1498,14 @@ impl Dispatch<zwp_input_method_v2::ZwpInputMethodV2, ()> for App {
 }
 
 impl Dispatch<zwlr_data_control_device_v1::ZwlrDataControlDeviceV1, ()> for App {
-    fn event(app: &mut Self, _: &zwlr_data_control_device_v1::ZwlrDataControlDeviceV1, e: zwlr_data_control_device_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &zwlr_data_control_device_v1::ZwlrDataControlDeviceV1,
+        e: zwlr_data_control_device_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match e {
             zwlr_data_control_device_v1::Event::Selection { id: Some(offer) } => {
                 let mimes = offer.data::<Mutex<Vec<String>>>().map(|m| m.lock().unwrap().clone()).unwrap_or_default();
@@ -1417,7 +1525,14 @@ impl Dispatch<zwlr_data_control_device_v1::ZwlrDataControlDeviceV1, ()> for App 
 }
 
 impl Dispatch<zwlr_data_control_offer_v1::ZwlrDataControlOfferV1, Mutex<Vec<String>>> for App {
-    fn event(_: &mut Self, _: &zwlr_data_control_offer_v1::ZwlrDataControlOfferV1, e: zwlr_data_control_offer_v1::Event, mimes: &Mutex<Vec<String>>, _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        _: &mut Self,
+        _: &zwlr_data_control_offer_v1::ZwlrDataControlOfferV1,
+        e: zwlr_data_control_offer_v1::Event,
+        mimes: &Mutex<Vec<String>>,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         if let zwlr_data_control_offer_v1::Event::Offer { mime_type } = e {
             mimes.lock().unwrap().push(mime_type);
         }
@@ -1425,7 +1540,14 @@ impl Dispatch<zwlr_data_control_offer_v1::ZwlrDataControlOfferV1, Mutex<Vec<Stri
 }
 
 impl Dispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()> for App {
-    fn event(app: &mut Self, _: &zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, e: zwlr_foreign_toplevel_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        _: &zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1,
+        e: zwlr_foreign_toplevel_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         match e {
             zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } => app.toplevels.push(Toplevel {
                 handle: toplevel,
@@ -1448,14 +1570,23 @@ impl Dispatch<zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1, ()
 }
 
 impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, ()> for App {
-    fn event(app: &mut Self, h: &zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, e: zwlr_foreign_toplevel_handle_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        app: &mut Self,
+        h: &zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1,
+        e: zwlr_foreign_toplevel_handle_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         use zwlr_foreign_toplevel_handle_v1::{Event, State};
         let Some(i) = app.toplevels.iter().position(|t| &t.handle == h) else { return };
         match e {
             Event::AppId { app_id } => app.toplevels[i].pending_app_id = Some(app_id),
             Event::State { state } => {
                 let activated = state
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .any(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]]) == State::Activated as u32);
                 app.toplevels[i].pending_activated = Some(activated);
             }

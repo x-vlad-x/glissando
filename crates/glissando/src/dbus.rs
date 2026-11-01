@@ -100,7 +100,8 @@ impl OskService {
         }
         if let Some(conn) = self.conn.borrow().as_ref() {
             let args = visible_changed(v);
-            let _ = conn.emit_signal(None, OSK_PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged", Some(&args));
+            let _ =
+                conn.emit_signal(None, OSK_PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged", Some(&args));
         }
     }
 }
@@ -167,7 +168,9 @@ fn gnome_session_register(conn: &gio::DBusConnection, slot: Rc<RefCell<Option<gi
         move |reply| {
             let reply = match reply {
                 Ok(r) => r,
-                Err(e) if e.matches(gio::DBusError::ServiceUnknown) || e.matches(gio::DBusError::NameHasNoOwner) => return,
+                Err(e) if e.matches(gio::DBusError::ServiceUnknown) || e.matches(gio::DBusError::NameHasNoOwner) => {
+                    return;
+                }
                 Err(e) => {
                     eprintln!("glissando: gnome-session registration failed: {e}");
                     return;
@@ -254,10 +257,10 @@ impl Haptics {
                 250,
                 gio::Cancellable::NONE,
                 move |r| {
-                    if let Err(e) = r {
-                        if e.matches(gio::DBusError::UnknownMethod) || e.matches(gio::DBusError::UnknownInterface) {
-                            flag.set(false);
-                        }
+                    if let Err(e) = r
+                        && (e.matches(gio::DBusError::UnknownMethod) || e.matches(gio::DBusError::UnknownInterface))
+                    {
+                        flag.set(false);
                     }
                 },
             );
@@ -322,4 +325,3 @@ mod tests {
         assert_eq!(dict.lookup::<bool>("Visible").ok().flatten(), Some(true));
     }
 }
-

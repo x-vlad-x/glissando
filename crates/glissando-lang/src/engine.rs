@@ -5,18 +5,21 @@
 
 use crate::model::{CandKind, Candidate, Language, LanguageDetector, Ranker};
 use crate::search::{InChar, SpatialModel};
-use std::collections::VecDeque;
 use glissando_core::text::{
-    apply_case, case_pattern, chars_for_words_back, is_word_char, previous_words, sentence_start, tail_bytes,
-    trailing_word, CasePattern,
+    CasePattern, apply_case, case_pattern, chars_for_words_back, is_word_char, previous_words, sentence_start,
+    tail_bytes, trailing_word,
 };
+use std::collections::VecDeque;
 
 /// A text operation for the client application.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Op {
     Commit(String),
     /// Delete text before the cursor. `bytes` is valid when the context is known.
-    DeleteBefore { chars: usize, bytes: usize },
+    DeleteBefore {
+        chars: usize,
+        bytes: usize,
+    },
     /// The composing text (preedit) after this batch.
     Preedit(String),
     Key(Key),
@@ -82,9 +85,7 @@ impl FieldInfo {
     }
 
     fn wants_autocap(&self) -> bool {
-        !self.private()
-            && !self.lowercase
-            && matches!(self.purpose, Purpose::Normal | Purpose::Alpha | Purpose::Name)
+        !self.private() && !self.lowercase && matches!(self.purpose, Purpose::Normal | Purpose::Alpha | Purpose::Name)
     }
 }
 
@@ -234,11 +235,7 @@ impl Engine {
     }
 
     pub fn language_probabilities(&self) -> Vec<(String, f32)> {
-        self.active
-            .iter()
-            .zip(self.detector.probs())
-            .map(|(&i, &p)| (self.langs[i].code.clone(), p))
-            .collect()
+        self.active.iter().zip(self.detector.probs()).map(|(&i, &p)| (self.langs[i].code.clone(), p)).collect()
     }
 
     pub fn field(&self) -> FieldInfo {
@@ -444,15 +441,10 @@ impl Engine {
         }
         let known: Vec<bool> = self.active.iter().map(|&i| self.langs[i].knows(word)).collect();
         self.detector.observe(&known);
-        let target = lang
-            .or_else(|| self.active.iter().zip(&known).find(|(_, k)| **k).map(|(i, _)| *i))
-            .or_else(|| {
+        let target =
+            lang.or_else(|| self.active.iter().zip(&known).find(|(_, k)| **k).map(|(i, _)| *i)).or_else(|| {
                 let probs = self.detector.probs();
-                self.active
-                    .iter()
-                    .zip(probs)
-                    .max_by(|a, b| a.1.total_cmp(b.1))
-                    .map(|(i, _)| *i)
+                self.active.iter().zip(probs).max_by(|a, b| a.1.total_cmp(b.1)).map(|(i, _)| *i)
             });
         if let Some(t) = target {
             // Store words as typed unless they are sentence-initial capitals of a lowercase word.
@@ -510,20 +502,18 @@ impl Engine {
         if self.composing.is_empty() {
             if self.settings.next_word && !self.before.is_empty() && !self.before.ends_with('\n') {
                 let ends_ws = self.before.ends_with(char::is_whitespace);
-                if ends_ws {
-                    if let Some(prev) = self.prev_word() {
-                        let ranker = Ranker { langs: &self.langs, active: &self.ranker_active() };
-                        let cap = self.autocap();
-                        self.suggestions = ranker
-                            .predictions(&prev, 3)
-                            .into_iter()
-                            .map(|c| Suggestion {
-                                text: if cap { apply_case(&c.text, CasePattern::Capitalized) } else { c.text },
-                                kind: SuggestionKind::Prediction,
-                                autocorrect: false,
-                            })
-                            .collect();
-                    }
+                if ends_ws && let Some(prev) = self.prev_word() {
+                    let ranker = Ranker { langs: &self.langs, active: &self.ranker_active() };
+                    let cap = self.autocap();
+                    self.suggestions = ranker
+                        .predictions(&prev, 3)
+                        .into_iter()
+                        .map(|c| Suggestion {
+                            text: if cap { apply_case(&c.text, CasePattern::Capitalized) } else { c.text },
+                            kind: SuggestionKind::Prediction,
+                            autocorrect: false,
+                        })
+                        .collect();
                 }
             }
             return;
@@ -565,12 +555,13 @@ impl Engine {
         }
         // Display order: the strongest candidate first. If the verbatim
         // word is unknown and something else ranks higher, show that first.
-        if auto.is_none() && !typed_known && list.len() > 1 {
-            if let Some(b) = best {
-                if b.kind != CandKind::Exact {
-                    list.swap(0, 1);
-                }
-            }
+        if auto.is_none()
+            && !typed_known
+            && list.len() > 1
+            && let Some(b) = best
+            && b.kind != CandKind::Exact
+        {
+            list.swap(0, 1);
         }
         self.suggestions = list;
     }
@@ -610,10 +601,8 @@ impl Engine {
         let typed = std::mem::take(&mut self.composing);
         self.inputs.clear();
         let mut out = typed.clone();
-        if correct {
-            if let Some(s) = self.suggestions.iter().find(|s| s.autocorrect) {
-                out = s.text.clone();
-            }
+        if correct && let Some(s) = self.suggestions.iter().find(|s| s.autocorrect) {
+            out = s.text.clone();
         }
         if self.use_preedit() {
             self.commit(&out, ops);
@@ -656,13 +645,11 @@ impl Engine {
             _ => None,
         };
         let wordish = single.map(|c| is_word_char(c) && c != '-').unwrap_or(false);
-        if self.kind == Composing::Swipe && !self.composing.is_empty() {
-            if wordish {
-                // Typing right after a glide starts a new word.
-                self.finish_word(false, &mut ops);
-                self.commit(" ", &mut ops);
-                self.auto_space = false;
-            }
+        if self.kind == Composing::Swipe && !self.composing.is_empty() && wordish {
+            // Typing right after a glide starts a new word.
+            self.finish_word(false, &mut ops);
+            self.commit(" ", &mut ops);
+            self.auto_space = false;
         }
         if self.selection && self.composing.is_empty() {
             // The client replaces the selection with whatever we send.
@@ -778,18 +765,19 @@ impl Engine {
             }
             return self.finish_batch(ops);
         }
-        if let Some(u) = self.undo.take() {
-            if self.before.ends_with(&u.inserted) && self.context_ok() {
-                // Revert the auto-correction and keep the original word.
-                let n = u.inserted.chars().count();
-                self.delete_before(n, &mut ops);
-                for &i in &self.active.clone() {
-                    self.langs[i].user.insist(&u.original);
-                }
-                let _ = u.lang;
-                self.recompose(&u.original, &mut ops);
-                return self.finish_batch(ops);
+        if let Some(u) = self.undo.take()
+            && self.before.ends_with(&u.inserted)
+            && self.context_ok()
+        {
+            // Revert the auto-correction and keep the original word.
+            let n = u.inserted.chars().count();
+            self.delete_before(n, &mut ops);
+            for &i in &self.active.clone() {
+                self.langs[i].user.insist(&u.original);
             }
+            let _ = u.lang;
+            self.recompose(&u.original, &mut ops);
+            return self.finish_batch(ops);
         }
         if self.auto_space && self.before.ends_with(' ') {
             self.auto_space = false;
@@ -948,7 +936,13 @@ impl Engine {
         if !self.composing.is_empty() {
             self.finish_word(!was_swipe && self.settings.autocorrect && self.field.wants_correction(), &mut ops);
             self.commit(" ", &mut ops);
-        } else if self.before.chars().last().map(|c| is_word_char(c) || matches!(c, '.' | ',' | '!' | '?' | ';' | ':')).unwrap_or(false) {
+        } else if self
+            .before
+            .chars()
+            .last()
+            .map(|c| is_word_char(c) || matches!(c, '.' | ',' | '!' | '?' | ';' | ':'))
+            .unwrap_or(false)
+        {
             self.commit(" ", &mut ops);
         }
         self.auto_space = false;
@@ -1041,16 +1035,13 @@ fn same_after(a: &str, b: &str) -> bool {
 
 fn keep_tail(s: &str) -> String {
     let n = s.chars().count();
-    if n <= CONTEXT_KEEP {
-        s.to_string()
-    } else {
-        s.chars().skip(n - CONTEXT_KEEP).collect()
-    }
+    if n <= CONTEXT_KEEP { s.to_string() } else { s.chars().skip(n - CONTEXT_KEEP).collect() }
 }
 
 fn double_space_applies(before: &str) -> bool {
     let mut it = before.chars().rev();
-    it.next() == Some(' ') && it.next().map(|c| c.is_alphanumeric() || matches!(c, ')' | '"' | '\'' | '»')).unwrap_or(false)
+    it.next() == Some(' ')
+        && it.next().map(|c| c.is_alphanumeric() || matches!(c, ')' | '"' | '\'' | '»')).unwrap_or(false)
 }
 
 /// Apply the typed word's case pattern to a dictionary word, keeping
@@ -1316,7 +1307,10 @@ mod tests {
     fn no_autocorrect_into_proper_nouns() {
         let ru = Language::new(
             "ru",
-            Some(test_dict(&[("Ле", 150), ("де", 60), ("дела", 200), ("день", 210), ("как", 230)], &[("как", "дела", 240)])),
+            Some(test_dict(
+                &[("Ле", 150), ("де", 60), ("дела", 200), ("день", 210), ("как", 230)],
+                &[("как", "дела", 240)],
+            )),
             UserModel::in_memory(),
         );
         let rows = ["йцукенгшщзх", "фывапролджэ", "ячсмитьбю"];

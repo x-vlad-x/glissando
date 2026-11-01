@@ -155,20 +155,18 @@ impl Dict {
     pub fn lookup_any_case(&self, word: &str) -> Option<(u32, u8)> {
         let mut best = self.lookup(word);
         let lower = word.to_lowercase();
-        if lower != word {
-            if let Some(l) = self.lookup(&lower) {
-                if best.map(|b| l.1 > b.1).unwrap_or(true) {
-                    best = Some(l);
-                }
-            }
+        if lower != word
+            && let Some(l) = self.lookup(&lower)
+            && best.map(|b| l.1 > b.1).unwrap_or(true)
+        {
+            best = Some(l);
         }
         let cap = glissando_core::text::capitalize(&lower);
-        if cap != word {
-            if let Some(c) = self.lookup(&cap) {
-                if best.map(|b| c.1 > b.1).unwrap_or(true) {
-                    best = Some(c);
-                }
-            }
+        if cap != word
+            && let Some(c) = self.lookup(&cap)
+            && best.map(|b| c.1 > b.1).unwrap_or(true)
+        {
+            best = Some(c);
         }
         best
     }
@@ -188,11 +186,7 @@ impl Dict {
         let b = self.data.bytes();
         let o = HEADER + self.nodes * NODE + i * BIGRAM;
         let r = &b[o..o + BIGRAM];
-        (
-            u32::from_le_bytes(r[0..4].try_into().unwrap()),
-            u32::from_le_bytes(r[4..8].try_into().unwrap()),
-            r[8],
-        )
+        (u32::from_le_bytes(r[0..4].try_into().unwrap()), u32::from_le_bytes(r[4..8].try_into().unwrap()), r[8])
     }
 
     /// Successors of `prev` (node id) as (node id, freq), best first.
@@ -268,10 +262,7 @@ impl DictBuilder {
         let mut last_word: Option<String> = None;
         for line in src.lines() {
             let t = line.trim_start();
-            let fields: BTreeMap<&str, &str> = t
-                .split(',')
-                .filter_map(|kv| kv.split_once('='))
-                .collect();
+            let fields: BTreeMap<&str, &str> = t.split(',').filter_map(|kv| kv.split_once('=')).collect();
             if let Some(w) = fields.get("word") {
                 let f: u8 = fields.get("f").and_then(|f| f.parse().ok()).unwrap_or(0);
                 let not_word = fields.get("not_a_word").map(|v| *v == "true").unwrap_or(false)
@@ -370,11 +361,8 @@ impl DictBuilder {
             }
             (t[cur].freq > 0).then(|| new_id[cur])
         };
-        let mut bg: Vec<(u32, u32, u8)> = self
-            .bigrams
-            .iter()
-            .filter_map(|(a, b, f)| Some((find(a)?, find(b)?, *f)))
-            .collect();
+        let mut bg: Vec<(u32, u32, u8)> =
+            self.bigrams.iter().filter_map(|(a, b, f)| Some((find(a)?, find(b)?, *f))).collect();
         bg.sort_by(|x, y| x.0.cmp(&y.0).then(y.2.cmp(&x.2)).then(x.1.cmp(&y.1)));
         bg.dedup_by(|x, y| x.0 == y.0 && x.1 == y.1);
         for (p, n, f) in &bg {

@@ -1,7 +1,10 @@
 [package]
 name = "glissando-testkit"
-version = "0.3.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 memmap2 = "0.9.12"

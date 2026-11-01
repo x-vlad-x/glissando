@@ -31,10 +31,7 @@ const MAX_WORDS: usize = 20_000;
 const MAX_BIGRAMS: usize = 50_000;
 
 fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 impl UserModel {
@@ -106,13 +103,13 @@ impl UserModel {
     fn prune(&mut self) {
         if self.words.len() > MAX_WORDS {
             let mut v: Vec<(String, UserWord)> = self.words.drain().collect();
-            v.sort_by(|a, b| (b.1.pinned, b.1.last).cmp(&(a.1.pinned, a.1.last)));
+            v.sort_by_key(|(_, w)| std::cmp::Reverse((w.pinned, w.last)));
             v.truncate(MAX_WORDS * 9 / 10);
             self.words = v.into_iter().collect();
         }
         if self.bigrams.len() > MAX_BIGRAMS {
             let mut v: Vec<((String, String), u32)> = self.bigrams.drain().collect();
-            v.sort_by(|a, b| b.1.cmp(&a.1));
+            v.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
             v.truncate(MAX_BIGRAMS * 9 / 10);
             self.bigrams = v.into_iter().collect();
         }
@@ -137,10 +134,10 @@ impl UserModel {
         }
         e.count = e.count.saturating_add(1);
         e.last = now();
-        if let Some(p) = prev {
-            if Self::valid(p) {
-                *self.bigrams.entry((p.to_lowercase(), word.to_string())).or_insert(0) += 1;
-            }
+        if let Some(p) = prev
+            && Self::valid(p)
+        {
+            *self.bigrams.entry((p.to_lowercase(), word.to_string())).or_insert(0) += 1;
         }
         self.dirty = true;
     }
@@ -231,7 +228,7 @@ mod tests {
         m.learn("glissando", Some("the"));
         assert!(m.known("glissando").is_some());
         m.learn("hunter2", None);
-        assert!(m.words.get("hunter2").is_none(), "words with digits are never learned");
+        assert!(!m.words.contains_key("hunter2"), "words with digits are never learned");
         m.save().unwrap();
         #[cfg(unix)]
         {
