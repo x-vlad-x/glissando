@@ -1,0 +1,35 @@
+.TH GLISSANDO-VOICE 1 "" "glissando" "User Commands"
+.SH NAME
+glissando\-voice \- local speech recognition helper of the glissando keyboard
+.SH SYNOPSIS
+.B glissando\-voice
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B glissando\-voice
+records the microphone and transcribes it on the device with whisper.cpp.
+\fBglissando\fR(1) starts it and talks to it over its standard input and
+output, so it is not meant to be run by hand. Audio never leaves the device.
+.SH OPTIONS
+.TP
+.BI \-\-lang " CODE"
+Language of the speech.
+.TP
+.BI \-\-model " FILE"
+Speech model.
+.TP
+.BI \-\-engine " FILE"
+The whisper\-cli executable.
+.TP
+.BI \-\-max\-seconds " N"
+Longest recording; the default is 30.
+.TP
+.BI \-\-threads " N"
+Transcription threads; the default is 4.
+.TP
+.BI \-\-input " COMMAND"
+Program that writes the recording to its standard output.
+.TP
+.B \-\-check
+Report whether voice typing can run.
+.SH SEE ALSO
+.BR glissando (1)

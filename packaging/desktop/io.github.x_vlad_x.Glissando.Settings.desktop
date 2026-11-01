@@ -5,6 +5,7 @@ Name[ru]=Настройки клавиатуры
 Name[de]=Tastatureinstellungen
 Comment=Configure the glissando on-screen keyboard
 Comment[ru]=Настройка экранной клавиатуры glissando
+Comment[de]=Die Bildschirmtastatur glissando einrichten
 Exec=glissando-settings
 Icon=io.github.x_vlad_x.Glissando
 Categories=Settings;GTK;

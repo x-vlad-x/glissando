@@ -1,5 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: glissando
+Comment: The Rust crates linked into the binaries are listed with their
+ licence texts in /usr/share/doc/glissando/THIRD-PARTY.md.
 
 Files: *
 Copyright: 2026 Vladislav Shadiuk

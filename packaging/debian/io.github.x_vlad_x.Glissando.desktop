@@ -2,9 +2,12 @@
 Type=Application
 Name=glissando
 Comment=On-screen keyboard
+Comment[de]=Bildschirmtastatur
+Comment[ru]=Экранная клавиатура
 Exec=/usr/libexec/glissando/glissando-launch
 Icon=io.github.x_vlad_x.Glissando
 NoDisplay=true
+OnlyShowIn=Phosh;
 X-GNOME-Autostart-Phase=Panel
 X-GNOME-Provides=inputmethod
 X-GNOME-Autostart-Notify=true

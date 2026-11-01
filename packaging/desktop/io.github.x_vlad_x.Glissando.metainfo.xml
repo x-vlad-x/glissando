@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.x_vlad_x.Glissando</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>glissando</name>
+  <summary>Private on-screen keyboard for Phosh</summary>
+  <developer id="io.github.x_vlad_x">
+    <name>Vladislav Shadiuk</name>
+  </developer>
+  <description>
+    <p>
+      glissando is an on-screen keyboard for Linux phones with glide typing,
+      prediction, auto-correction and typing in several languages at once.
+    </p>
+    <p>
+      It works offline: it has no network access, no telemetry and no accounts.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.x_vlad_x.Glissando.Settings.desktop</launchable>
+  <url type="homepage">https://github.com/x-vlad-x/glissando</url>
+  <url type="bugtracker">https://github.com/x-vlad-x/glissando/issues</url>
+  <supports>
+    <control>touch</control>
+  </supports>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Glide typing in the dark theme</caption>
+      <image>https://raw.githubusercontent.com/x-vlad-x/glissando/main/docs/screenshots/dark-glide.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Suggestions in the light theme</caption>
+      <image>https://raw.githubusercontent.com/x-vlad-x/glissando/main/docs/screenshots/light-typing.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Settings</caption>
+      <image>https://raw.githubusercontent.com/x-vlad-x/glissando/main/docs/screenshots/settings.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.3.0" date="2026-10-28"/>
+  </releases>
+</component>
