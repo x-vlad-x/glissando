@@ -135,6 +135,9 @@ pub struct App {
     osk: Option<Rc<OskService>>,
     haptics: Haptics,
     auto_show: bool,
+    /// The settings `kb.config` was based on, to tell what the quick menu
+    /// changed from what another process wrote to the file.
+    saved_config: Config,
     /// Keeps the desktop settings being followed alive.
     _desktop_settings: Vec<gio::Settings>,
     dump_geometry: Option<std::path::PathBuf>,
@@ -191,6 +194,7 @@ impl App {
     }
 
     pub fn apply_config(&mut self, config: Config, layouts: Vec<glissando_core::layout::Layout>) {
+        self.saved_config = config.clone();
         self.theme = Self::theme_for(&config);
         self.renderer.set_font(&config.font);
         self.haptics.enabled = config.haptics;
@@ -763,8 +767,9 @@ impl App {
                 }
                 Action::Resize => self.update_height(),
                 Action::SaveConfig => {
-                    if let Err(e) = self.kb.config.save() {
-                        eprintln!("glissando: saving config failed: {e}");
+                    match Config::save_changes(&self.saved_config, &self.kb.config) {
+                        Ok(()) => self.saved_config = self.kb.config.clone(),
+                        Err(e) => eprintln!("glissando: saving config failed: {e}"),
                     }
                     self.theme = Self::theme_for(&self.kb.config);
                     self.update_height();
@@ -1084,6 +1089,7 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         osk: None,
         haptics,
         auto_show: auto_show_wanted(),
+        saved_config: config.clone(),
         _desktop_settings: Vec::new(),
         dump_geometry: opts.dump_geometry.clone(),
         last_geometry: String::new(),

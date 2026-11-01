@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -164,18 +165,20 @@ pub fn find_resource(rel: &str) -> Option<PathBuf> {
     resource_dirs().into_iter().map(|d| d.join(rel)).find(|p| p.exists())
 }
 
-/// Replace the personal data file `path` with `contents`. The bytes go to a
-/// temporary file next to it, readable only by the user, which is then renamed
-/// over `path`: a crash leaves either the old or the new file, never a partial
-/// one. A file with wider permissions from an earlier version is replaced too.
+/// Replace the file `path` with `contents`. The bytes go to a temporary file
+/// next to it, readable only by the user, which is then renamed over `path`: a
+/// crash leaves either the old or the new file, never a partial one, and
+/// readers never see an empty file. The name of the temporary file is unique,
+/// since the keyboard and the settings app can write at the same time.
 pub fn write_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    static NEXT: AtomicU32 = AtomicU32::new(0);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
+    tmp.push(format!(".{}.{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
     let tmp = PathBuf::from(tmp);
-    // A leftover from a crash would keep its permissions if opened again.
+    // A crashed process with the same id can have left this name behind.
     match std::fs::remove_file(&tmp) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
         _ => {}
@@ -208,51 +211,83 @@ impl Config {
     }
 
     pub fn load() -> Config {
-        Config::load_from(&Config::path())
+        Config::read().unwrap_or_else(|e| {
+            eprintln!("glissando: ignoring invalid {}: {e}", Config::path().display());
+            Config::default()
+        })
     }
 
-    fn load_from(p: &Path) -> Config {
+    /// The settings in the file, the defaults if there is no file, or an error
+    /// if it cannot be used. Unlike `load` this tells a broken file from
+    /// default settings, for callers that act on the difference.
+    pub fn read() -> std::io::Result<Config> {
+        Config::read_from(&Config::path())
+    }
+
+    fn read_from(p: &Path) -> std::io::Result<Config> {
         match std::fs::read_to_string(p) {
-            Ok(s) => match toml::from_str::<Config>(&s) {
-                Ok(c) => c.sanitized(),
-                Err(e) => {
-                    eprintln!("glissando: ignoring invalid {}: {e}", p.display());
-                    Config::default()
-                }
-            },
-            Err(_) => Config::default(),
+            Ok(s) => toml::from_str::<Config>(&s)
+                .map(Config::sanitized)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(e) => Err(e),
         }
-    }
-
-    pub fn save(&self) -> std::io::Result<()> {
-        self.save_to(&Config::path())
     }
 
     fn save_to(&self, p: &Path) -> std::io::Result<()> {
-        if let Some(d) = p.parent() {
+        let s = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
+        write_private(p, s.as_bytes())
+    }
+
+    /// Run `f` while no other process writes the file at `path`.
+    fn locked<T>(path: &Path, f: impl FnOnce() -> std::io::Result<T>) -> std::io::Result<T> {
+        if let Some(d) = path.parent() {
             std::fs::create_dir_all(d)?;
         }
-        let s = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        let tmp = p.with_extension("tmp");
-        std::fs::write(&tmp, s)?;
-        std::fs::rename(tmp, p)
+        let lock =
+            std::fs::OpenOptions::new().write(true).create(true).truncate(false).open(path.with_extension("lock"))?;
+        lock.lock()?;
+        f()
     }
 
     /// Change the settings as they are in the file now and return the result.
-    /// A copy loaded earlier may be out of date: the keyboard saves its quick
-    /// menu changes while the settings app is open.
+    /// A copy loaded earlier may be out of date, since the keyboard and the
+    /// settings app both write the file. A broken file stays as it is.
     pub fn update(change: impl FnOnce(&mut Config)) -> std::io::Result<Config> {
         Config::update_file(&Config::path(), change)
     }
 
     fn update_file(path: &Path, change: impl FnOnce(&mut Config)) -> std::io::Result<Config> {
-        let before = Config::load_from(path);
-        let mut after = before.clone();
-        change(&mut after);
-        if after != before {
-            after.save_to(path)?;
-        }
-        Ok(after)
+        Config::locked(path, || {
+            let before = Config::read_from(path)?;
+            let mut after = before.clone();
+            change(&mut after);
+            if after != before {
+                after.save_to(path)?;
+            }
+            Ok(after)
+        })
+    }
+
+    /// Write the settings that differ between `base` and `mine` into the file,
+    /// keeping everything else as it is there now.
+    pub fn save_changes(base: &Config, mine: &Config) -> std::io::Result<()> {
+        Config::save_changes_to(&Config::path(), base, mine)
+    }
+
+    fn save_changes_to(path: &Path, base: &Config, mine: &Config) -> std::io::Result<()> {
+        let table = |c: &Config| toml::Table::try_from(c).map_err(std::io::Error::other);
+        let (base, mine) = (table(base)?, table(mine)?);
+        Config::locked(path, || {
+            let mut merged = table(&Config::read_from(path)?)?;
+            for (key, value) in mine {
+                if base.get(&key) != Some(&value) {
+                    merged.insert(key, value);
+                }
+            }
+            let merged: Config = merged.try_into().map_err(std::io::Error::other)?;
+            merged.save_to(path)
+        })
     }
 
     pub fn sanitized(mut self) -> Config {
@@ -305,20 +340,18 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn write_private_ignores_a_stale_temporary_file() {
+    fn write_private_leaves_only_a_private_file() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = scratch_dir("stale");
-        let path = dir.join("sub").join("data");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let tmp = path.with_file_name("data.tmp");
-        std::fs::write(&tmp, "leftover from a crash").unwrap();
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let dir = scratch_dir("private");
+        let path = dir.join("data");
+        std::fs::write(&path, "old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         write_private(&path, b"new").unwrap();
 
         assert_eq!(std::fs::read(&path).unwrap(), b"new");
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
-        assert!(!tmp.exists());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -332,16 +365,62 @@ mod tests {
     }
 
     #[test]
-    fn failed_write_keeps_the_old_file() {
+    fn failed_write_leaves_no_temporary_file() {
         let dir = scratch_dir("fail");
+        // A directory in the way makes the final rename fail.
         let path = dir.join("data");
-        std::fs::write(&path, "old").unwrap();
-        // A directory in the way of the temporary file makes the write fail.
-        std::fs::create_dir(dir.join("data.tmp")).unwrap();
+        std::fs::create_dir(&path).unwrap();
 
         assert!(write_private(&path, b"new").is_err());
 
-        assert_eq!(std::fs::read(&path).unwrap(), b"old");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn concurrent_updates_are_all_kept() {
+        let dir = scratch_dir("concurrent");
+        let path = dir.join("config.toml");
+        std::thread::scope(|s| {
+            for _ in 0..4 {
+                s.spawn(|| {
+                    for _ in 0..25 {
+                        Config::update_file(&path, |c| c.user_dict_epoch += 1).unwrap();
+                    }
+                });
+            }
+        });
+        assert_eq!(Config::read_from(&path).unwrap().user_dict_epoch, 100);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_leaves_a_broken_file_alone() {
+        let dir = scratch_dir("broken");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "theme = [unfinished").unwrap();
+
+        assert!(Config::update_file(&path, |c| c.haptics = false).is_err());
+        assert!(Config::save_changes_to(&path, &Config::default(), &Config::default()).is_err());
+
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "theme = [unfinished");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn saved_changes_keep_what_the_other_process_changed() {
+        let dir = scratch_dir("merge");
+        let path = dir.join("config.toml");
+        let base = Config::default();
+        // The settings app raises the epoch while the keyboard's copy is old.
+        Config { user_data_epoch: 3, ..base.clone() }.save_to(&path).unwrap();
+        let mine = Config { number_row: !base.number_row, ..base.clone() };
+
+        Config::save_changes_to(&path, &base, &mine).unwrap();
+
+        let on_disk = Config::read_from(&path).unwrap();
+        assert_eq!(on_disk.user_data_epoch, 3);
+        assert_eq!(on_disk.number_row, mine.number_row);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -352,12 +431,12 @@ mod tests {
         // The settings app has the file open with these values...
         Config::default().save_to(&path).unwrap();
         // ...when the keyboard's quick menu changes two others.
-        let keyboard = Config { theme: ThemeMode::Dark, number_row: true, ..Config::load_from(&path) };
+        let keyboard = Config { theme: ThemeMode::Dark, number_row: true, ..Config::read_from(&path).unwrap() };
         keyboard.save_to(&path).unwrap();
 
         let c = Config::update_file(&path, |c| c.haptics = false).unwrap();
 
-        let on_disk = Config::load_from(&path);
+        let on_disk = Config::read_from(&path).unwrap();
         assert_eq!(on_disk, c);
         assert_eq!(on_disk.theme, ThemeMode::Dark);
         assert!(on_disk.number_row);

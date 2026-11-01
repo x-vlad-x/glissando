@@ -208,7 +208,15 @@ fn main() {
                     | gio::FileMonitorEvent::Created
                     | gio::FileMonitorEvent::Changed
             ) {
-                let cfg = Config::load();
+                // A broken file must not count as the defaults: their data epoch
+                // would delete the user's words.
+                let cfg = match Config::read() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("glissando: ignoring invalid {}: {e}", Config::path().display());
+                        return;
+                    }
+                };
                 if let Ok(mut app) = a.try_borrow_mut()
                     && cfg != app.kb.config
                 {
