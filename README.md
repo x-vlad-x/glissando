@@ -17,13 +17,19 @@ Glide typing · prediction & auto-correction · multilingual · emoji · clipboa
 glissando brings the comfort of a modern phone keyboard to Linux phones —
 glide typing, smart suggestions, cursor control on the space bar — while
 staying fully on the device. It has **no network access at all**: no
-telemetry, no accounts, no cloud. Built for and tested on the
-**FuriPhone FLX1s** running **FuriOS**. It may also work on other Phosh-based
-systems (Mobian, postmarketOS, PureOS…), but these are not verified yet.
+telemetry, no accounts, no cloud.
 
-> **Preview release.** This is the first public version. It is already
-> pleasant for daily typing, but expect rough edges — feedback is very
-> welcome!
+## Supported systems
+
+| Tier | Systems | Meaning |
+|---|---|---|
+| Supported | FuriOS on the FuriPhone FLX1s | Tested before each release; bugs block the release |
+| May work | Mobian, postmarketOS, PureOS and other Phosh systems | Not verified; fixes are best effort |
+
+A system moves to *Supported* only after someone runs the manual device checks
+and the package install, upgrade and removal cycle on it. Phosh is the only
+supported desktop. Open release work is listed in
+[docs/PROGRESS.md](docs/PROGRESS.md).
 
 | | | |
 |:-:|:-:|:-:|
@@ -35,12 +41,12 @@ systems (Mobian, postmarketOS, PureOS…), but these are not verified yet.
 ## Features
 
 **Typing**
-- Glide (swipe) typing with a fading trail — 87.7 % of real-world gestures
-  decoded as the top suggestion, 95 % within the strip
+- Glide (swipe) typing with a fading trail — on recorded English gestures,
+  87.7 % decoded as the top suggestion and 95.1 % within the top three
 - Word suggestions, next-word prediction and auto-correction that adapts to
   your touch; backspace right after a correction undoes it
-- Multilingual typing: English, German and Russian; several Latin languages
-  at once with automatic language detection
+- Multilingual typing: English, German and Russian; enabled Latin layouts
+  work at once with automatic language detection
 - Learns new words on the device; personal dictionary you can review and edit
 - Auto-capitalisation, double-space period, smart punctuation
 
@@ -68,15 +74,17 @@ systems (Mobian, postmarketOS, PureOS…), but these are not verified yet.
 
 - No networking code; the keyboard service runs with the network forbidden by
   the kernel (`RestrictAddressFamilies=AF_UNIX AF_NETLINK`).
-- Nothing you type is logged. Password and PIN fields get no suggestions and
+- Nothing you type is logged, unless you turn on the touch log meant for test
+  sessions. Password and PIN fields get no prediction or auto-correction and
   are never learned from.
 - Learned words, recent emoji and pinned clips stay in your home directory and
   can be deleted from the settings.
-- Voice typing records into memory and transcribes on the phone.
+- Voice typing records into memory and transcribes on the phone. The file
+  handed to the speech engine has no name and ends with the voice helper.
 
-Automated checks prove it: the full end-to-end test suite runs with a socket
-guard that fails on any network attempt, and again inside an empty network
-namespace. Details: [docs/PRIVACY.md](docs/PRIVACY.md).
+Automated checks cover this: the end-to-end test suite runs with a socket guard
+that fails on any network attempt from the keyboard, and again inside an empty
+network namespace. Details: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Install on FuriOS / Phosh
 
@@ -98,9 +106,53 @@ sudo update-alternatives --set Phosh-OSK /usr/share/phosh-osk-stevia/mobi.phosh.
 systemctl --user daemon-reload && systemctl --user restart mobi.phosh.OSK.service
 ```
 
-If glissando ever fails to start three times in a row, the system keyboard
-starts instead, so you can't lock yourself out. Prefer to try it without
-root? See the trial mode in [docs/DEVICE.md](docs/DEVICE.md).
+If glissando fails three times within five minutes, its launcher starts Stevia
+or Squeekboard instead. Prefer to try it without root? See the trial mode in
+[docs/DEVICE.md](docs/DEVICE.md).
+
+## Updating
+
+Updates are installed by hand for now. Download both new packages into an
+otherwise empty directory, then, in that directory:
+
+```bash
+sudo apt install ./glissando_*_arm64.deb ./glissando-voice_*_arm64.deb
+systemctl --user restart mobi.phosh.OSK.service
+```
+
+`glissando-voice` needs the exact same version of `glissando`, so update them
+together. Your keyboard choice, settings, learned words and pinned clips stay.
+
+## Removing
+
+Switch back to the system keyboard first (see above), then:
+
+```bash
+sudo apt remove glissando-voice glissando
+```
+
+Removing `glissando` also removes its Phosh-OSK alternative. The packages never
+touch your home directory, so your settings and personal data stay. To delete
+them too:
+
+```bash
+rm -r ~/.config/glissando ~/.local/share/glissando ~/.local/state/glissando
+```
+
+## Known limitations
+
+- Phosh only. Other desktops are not supported.
+- Packages exist for arm64 only.
+- No Flatpak: a sandboxed client cannot see the Wayland protocols a keyboard
+  depends on.
+- English, German and Russian only. Russian is not mixed with the Latin
+  languages: switch layouts to change between them.
+- Not in 1.0: split layout, the FUTO neural glide backend, new languages and
+  layouts, and partial damage rendering. These can return in a later 1.x
+  release.
+- The launcher's fallback only knows Stevia and Squeekboard.
+- Keeping the keyboard closed in chosen apps needs a compositor with
+  wlr-foreign-toplevel.
 
 ## Building
 
@@ -120,8 +172,9 @@ dbus-run-session -- python3 tests/e2e/e2e.py
 tests/privacy/check.sh
 ```
 
-Both run in CI. The voice test reports `SKIP` unless its model and test
-recording are present in `.devtools/voice`.
+Both run in CI. `fetch-sway.sh` works on Arch-based hosts only. The voice test
+reports `SKIP` unless its model and test recording are in `.devtools/voice` and
+`packaging/voice/build-whisper-host.sh` has been run.
 
 Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 FuriOS input stack: [docs/research/furios.md](docs/research/furios.md) ·
@@ -129,8 +182,10 @@ Reference behaviour: [docs/research/reference-behaviour.md](docs/research/refere
 
 ## Contributing
 
-Bug reports, layouts for more languages and translations are very welcome.
-Layouts are small TOML files in [`data/layouts`](data/layouts).
+Bug reports and translation fixes are very welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md). Layouts are small TOML files, described in
+[docs/ADDING-A-LAYOUT.md](docs/ADDING-A-LAYOUT.md); new languages are outside
+the scope of 1.0. To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 
@@ -151,9 +206,12 @@ GPL-3.0-or-later. See [LICENSE](LICENSE) and the data licences in
 
 ### По-русски
 
-glissando — экранная клавиатура для Phosh (FuriOS и другие), работающая
+glissando — экранная клавиатура для Phosh, работающая
 полностью на устройстве: ввод свайпом, подсказки и автоисправление, русская,
 английская и немецкая раскладки с одновременным вводом на нескольких языках,
 эмодзи, буфер обмена, локальный голосовой ввод. Никакой сети, телеметрии и
-учётных записей. Установка — выше, в разделе «Install»; настройки и
-интерфейс переведены на русский.
+учётных записей. Поддерживается FuriOS на FuriPhone FLX1s; на других системах
+с Phosh клавиатура может работать, но это не проверено. Другие среды и Flatpak
+не поддерживаются. Установка, обновление и удаление — выше, в разделах
+«Install», «Updating» и «Removing»; ограничения — в разделе «Known limitations».
+Настройки и интерфейс переведены на русский.

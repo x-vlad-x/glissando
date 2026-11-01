@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/x-vlad-x/glissando/security
+    about: Report it privately with "Report a vulnerability" on the Security tab. Do not open a public issue.

@@ -1,0 +1,67 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste text you typed, passwords or personal data. Report security problems on the Security tab instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the app you typed in, if it matters.
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      placeholder: FuriPhone FLX1s
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: FuriOS ...
+    validations:
+      required: true
+  - type: input
+    id: phosh
+    attributes:
+      label: phosh version
+      description: For example from `apt policy phosh`.
+    validations:
+      required: true
+  - type: input
+    id: phoc
+    attributes:
+      label: phoc version
+      description: For example from `apt policy phoc`.
+    validations:
+      required: true
+  - type: input
+    id: glissando
+    attributes:
+      label: glissando version
+      description: From `glissando --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Output of `journalctl --user -u mobi.phosh.OSK.service -b`, if useful. Do not paste logs made with `GLISSANDO_DEBUG_INPUT` or `WAYLAND_DEBUG`: they can reveal what you typed.
+      render: text

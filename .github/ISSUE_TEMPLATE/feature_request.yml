@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an idea for glissando
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        1.0 adds no new typing features. Check "Not in 1.0" in docs/RELEASE-1.0.md first; those items can return in a later 1.x release.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What else did you consider?
