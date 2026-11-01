@@ -1,7 +1,8 @@
 # Running glissando on the FuriPhone
 
-Nothing here needs root or touches system files. Everything lives in
-`~/.local/opt/glissando` on the phone.
+The user-prefix setup below needs no root and touches no system files.
+Everything lives in `~/.local/opt/glissando` on the phone. Only the Debian
+packages are installed system-wide.
 
 ## Build and copy
 
@@ -48,9 +49,9 @@ packaging/device/deploy.sh --voice furios
 Installs `whisper-cli` and the multilingual Whisper base model (q8_0, 82 MB,
 checksum verified) into the user prefix. The microphone appears in the
 suggestion strip; tap it, speak, and pause (or tap again). On the FLX1s an
-11 s utterance is recognised in about 4 s. Recording uses `parecord`; the
-audio stays in memory and in a private file under `$XDG_RUNTIME_DIR` that is
-deleted immediately.
+11 s utterance is recognised in about 4 s. Recording uses the first of
+`parecord`, `pw-record` and `arecord` that starts. The audio stays in memory and
+in an unnamed private file in `$XDG_RUNTIME_DIR`, which ends with the helper.
 
 ## System-wide installation (Debian packages)
 
@@ -61,7 +62,7 @@ packaging/debian/build-deb.sh           # dist/glissando_*.deb, dist/glissando-v
 On the phone:
 
 ```bash
-sudo apt install ./glissando_0.3.0_arm64.deb ./glissando-voice_0.3.0_arm64.deb
+sudo apt install ./glissando_*_arm64.deb ./glissando-voice_*_arm64.deb
 # switch (takes effect after re-login, or restart the keyboard service):
 sudo update-alternatives --set Phosh-OSK /usr/share/glissando/io.github.x_vlad_x.Glissando.desktop
 systemctl --user daemon-reload && systemctl --user restart mobi.phosh.OSK.service
@@ -73,13 +74,33 @@ systemctl --user daemon-reload && systemctl --user restart mobi.phosh.OSK.servic
 The package registers a Phosh-OSK alternative with priority 20 (Stevia has
 30), so installing it never changes the active keyboard by itself. The
 system unit has the same network ban and crash fallback as the user setup.
-`apt-get install -s` of both packages was checked on the device.
+`apt-get install -s` of both packages was checked on the device. The real
+install, upgrade and removal cycle has not been run on a device yet.
+
+To upgrade, install the new packages the same way, then restart the keyboard
+service. The prerm script removes the alternative only on removal, and the
+postinst script registers it again, so the selection stays. `glissando-voice`
+depends on the exact same version of `glissando`.
+
+To remove, switch back to the system keyboard first, then run
+`sudo apt remove glissando-voice glissando`. The prerm script removes the
+alternative. There is no postrm script: `~/.config/glissando`,
+`~/.local/share/glissando` and `~/.local/state/glissando` stay until you delete
+them.
+
+To remove the user-prefix setup, run `glissando-session disable`, then delete
+`~/.local/opt/glissando`, the settings entry in `~/.local/share/applications`
+and the icon in `~/.local/share/icons/hicolor/scalable/apps`.
 
 ## Emergency rollback without a working keyboard
 
-* via SSH: `glissando-session disable` or `rm -r ~/.config/systemd/user/mobi.phosh.OSK.service.d && systemctl --user daemon-reload && systemctl --user restart mobi.phosh.OSK.service`
-* a hardware keyboard or the FuriOS terminal is not needed: three crashes
-  already switch back automatically, and a reboot keeps the fallback logic.
+* via SSH: `~/.local/opt/glissando/bin/glissando-session disable` or `rm -r ~/.config/systemd/user/mobi.phosh.OSK.service.d && systemctl --user daemon-reload && systemctl --user restart mobi.phosh.OSK.service`
+* with the packages, select the system keyboard with `update-alternatives`
+  over SSH, as above.
+* automatic: after three failures within five minutes the launcher starts
+  Stevia or Squeekboard. An exit with status 0 or 143 does not count as a
+  failure. Once the failures are older than five minutes, the next start tries
+  glissando again. This has not been verified on a device yet.
 
 ## Verified on the device
 

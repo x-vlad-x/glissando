@@ -2,15 +2,18 @@
 
 ```
 crates/
+  glissando-config   config.toml, data directories, atomic private writes   (no deps but serde/toml)
   glissando-core     layouts (TOML), geometry/hit testing, touch state machine, text utils   (no deps but serde/toml)
   glissando-lang     mmap trie dictionaries, spatial fuzzy search, ranking, personal model,
                      language detection, typing engine (composing, auto-correct, smart punctuation)
   glissando-swipe    glide decoder (trie-pruned alignment + shape/location matching)
   glissando          the keyboard: Wayland client, cairo/pango renderer, D-Bus, haptics,
-                     panels (emoji, clipboard, quick menu), config
+                     panels (emoji, clipboard, quick menu)
+  glissando-settings GTK4/libadwaita settings app
+  glissando-voice    speech helper: records audio and runs whisper-cli
   glissando-testkit  text-input-v3 test client and virtual pointer driver for e2e tests
 data/                layouts, emoji (Unicode/CLDR), dictionaries (built by tools/build-dicts.py)
-packaging/           cross build container, device scripts (trial, session, deploy)
+packaging/           cross build container, Debian packages, voice builds, device scripts (trial, session, deploy)
 tests/               e2e (headless sway) and privacy checks
 ```
 
@@ -45,6 +48,61 @@ space/backspace scrubbing) → `Engine` (glissando-lang) → `Op`s
 `zwp_virtual_keyboard_v1` keys. Without an input-method client (shown
 manually) text is typed through a dynamically generated XKB keymap.
 
+## Configuration and personal data
+
+`glissando-config` is shared by the keyboard and the settings app. Both write
+`config.toml`, so neither may save a stale copy over the other.
+
+* **`write_private`** writes to a uniquely named `.tmp` file next to the target
+  with mode 0600, syncs it and renames it over the target. A crash leaves the
+  old or the new file, never a partial one. It is used for `config.toml`, the
+  learned word files, `recent-emoji` and `pinned-clips`.
+* **Stale temporary files** can hold copies of personal data. The keyboard
+  removes `*.tmp` from the config, user data and state directories at start,
+  and the settings app removes them from the state directory when it deletes
+  personal data. Deleting personal data removes the whole `user/` directory.
+* **Config lock:** writes take an exclusive lock on `config.lock` next to the
+  file, and read the file again under it. The settings app changes one value
+  with `Config::update`. The keyboard saves quick menu changes with
+  `Config::save_changes`, which writes only the keys that differ from its last
+  saved copy.
+* **Broken files:** both write paths stop if the file cannot be parsed, so a
+  damaged file stays as it is. The keyboard keeps its copy and runs the save
+  again the next time the file changes. At start, an invalid file means the
+  defaults are used.
+* **Data epochs:** `user_data_epoch` and `user_dict_epoch` are counters in
+  `config.toml`. The settings app raises the first after deleting personal data
+  and the second after editing the personal dictionary. The keyboard watches
+  the file and keeps an `EpochTracker`, which treats only a value above the
+  highest one seen as a request. A blank, partial or restored file can
+  therefore never delete anything. On a request the keyboard drops its copies
+  of learned words, recent emoji and clipboard history, or reloads the personal
+  dictionary.
+
+## Settings app
+
+`glissando-settings` is a separate GTK4/libadwaita process. It never talks to
+the keyboard directly: every switch goes through `Config::update`, and the
+keyboard's file monitor picks up the change. It lists layouts from all resource
+directories, edits the personal dictionary files, and deletes personal data.
+Its strings are in `strings.rs`, in English, German and Russian.
+
+## Voice typing
+
+`glissando-voice` is a separate process in an optional package. The keyboard
+starts it and exchanges lines over stdin and stdout: `listening`, `level`,
+`processing`, `text` and `error` come back; `stop` and `cancel` go in. EOF on
+stdin cancels, since nobody could receive the text.
+
+The helper records 16 kHz mono audio with `parecord`, `pw-record` or `arecord`
+into memory and stops on silence, on request or after 30 s. For transcription it
+writes a WAV file with `O_TMPFILE` in `$XDG_RUNTIME_DIR`, so the file never has
+a name, and passes `/proc/<pid>/fd/<n>` to `whisper-cli`. The engine runs with
+`PR_SET_PDEATHSIG`, so it dies with the helper. The keyboard kills the helper
+when the focus changes during transcription, and the kernel then frees the
+audio. `crates/glissando-voice/tests/no_audio_left.rs` checks this with a
+simulated microphone and a scripted engine.
+
 ## Language model
 
 * Dictionary: character trie, BFS laid out, 16 bytes/node, memory mapped
@@ -60,7 +118,7 @@ manually) text is typed through a dynamically generated XKB keymap.
   script are active at once; an online detector shifts priors towards the
   language being written.
 * Personalisation: per-language TSV in `$XDG_DATA_HOME/glissando/user/`
-  (0600): learned words, personal dictionary (pinned), blocked words, word
+  (0600, written by `write_private`): learned words, personal dictionary (pinned), blocked words, word
   pair counts. Never fed from password/PIN/sensitive fields.
 
 ## Glide typing

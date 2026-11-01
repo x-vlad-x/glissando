@@ -63,8 +63,8 @@ either an automatic migration or a 2.0.0 release.
   whole file invalid for older versions, so it must be listed in the changelog.
 
 Saving writes only known keys, so a downgrade followed by a save drops keys
-added by the newer version. An invalid file falls back to the defaults, and the
-next save replaces it.
+added by the newer version. An invalid file falls back to the defaults for as long
+as it stays invalid, and is never overwritten.
 
 ### Personal data
 

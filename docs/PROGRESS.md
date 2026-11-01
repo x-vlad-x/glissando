@@ -1,54 +1,59 @@
-# Progress log
+# Roadmap
 
-Legend: ✅ implemented and verified by automated tests · 🟡 implemented,
-verified only partially (see note) · ⬜ not started.
+The scope of 1.0.0 is in [RELEASE-1.0.md](RELEASE-1.0.md). Its work is tracked
+in the [1.0.0 milestone](https://github.com/x-vlad-x/glissando/milestone/1).
+This page is a short summary. Device results are in [DEVICE.md](DEVICE.md).
 
-## Stage 1 – working keyboard over Wayland ✅
-* layer-shell surface, input-method-v2 commit/preedit/delete, virtual
-  keyboard keys and fallback typing, `sm.puri.OSK0`, auto show on focus —
-  e2e `keyboard_appears_on_focus`, `typing_letters`.
-* arm64 build runs on the FuriPhone (surface, fractional scale) 🟡 typing on
-  device not yet exercised (requires `glissando-trial` at the phone).
+## In the code, with automated tests
 
-## Stage 2 – layouts and UI ✅/🟡
-* en/de/ru letters, symbols ×2, numpad, phone, digits, email/url bottom rows ✅ (unit tests)
-* key preview, long-press popups, hints, shift/caps lock/chording ✅ unit, 🟡 popups not e2e tested
-* suggestion strip, toolbar, one-handed mode, number row, height setting 🟡 (no e2e)
-* emoji / clipboard / quick-menu panels 🟡 (render path unit-tested, no e2e yet)
-* themes light/dark/system, own vector icons ✅
+* Wayland keyboard: layer shell, input-method-v2, virtual keyboard fallback,
+  `sm.puri.OSK0`, portrait and landscape
+* Layouts for English, German and Russian, symbols, number, phone and PIN pads,
+  email and URL rows
+* Prediction, auto-correction, multilingual typing, on-device learning
+* Glide typing, space bar cursor, glide delete
+* Emoji panel, search and suggestions; clipboard history; quick menu
+* Terminal keys, apps without automatic showing, home bar long press
+* Registration with gnome-session and clean end of session
+* Screen keyboard setting and colour scheme applied while running
+* Atomic, private personal data files; config changes from the keyboard and the
+  settings app no longer overwrite each other
+* CI: formatting, clippy, unit tests, dictionary hashes, e2e in portrait and
+  landscape, privacy checks
 
-## Stage 3 – prediction, correction, dictionaries ✅
-* trie dictionaries from AOSP + Leipzig, spatial fuzzy correction,
-  completion, bigram prediction, personal model, multilingual detection
-  (unit tests in glissando-lang).
-* auto-correct + undo, smart punctuation, double-space period, recompose on
-  backspace (engine tests).
+The settings app has no e2e test. The voice e2e test needs a speech model, so it
+reports `SKIP` in CI.
 
-## Stage 4 – glide typing ✅
-* own decoder; e2e `glide_typing`; benchmark in ARCHITECTURE.md.
-* ✅ evaluation on real human traces (FUTO dataset): 87.7 % top-1 / 95.1 % top-3 held-out; ⬜ optional FUTO neural backend (deferred, see ARCHITECTURE.md).
+## In the repository, not yet proven on a device
 
-## Stage 5 – remaining features
-* space cursor + glide delete ✅ e2e `space_cursor_and_glide_delete`
-* password privacy ✅ e2e `password_field_is_private`
-* ✅ settings application (GTK4/libadwaita, en/ru/de), runs on the phone (launcher entry, user scope)
-* 🟡 emoji search (query in the strip, typed or glided) and emoji suggestions while typing — builds, unit tests pass, no dedicated e2e test yet
-* ✅ local voice typing (glissando-voice + whisper.cpp), e2e `voice_input`, pipeline verified on the phone with a recorded sample
-* ✅ landscape: row-pitch normalised touch model, lower rows; full e2e suite passes with `E2E_LANDSCAPE=1`; ⬜ split layout
-* ✅ terminal keys (Esc, Tab, Ctrl, Alt, arrows) for terminal fields, e2e `terminal_keys`
-* ✅ apps without automatic showing (wlr-foreign-toplevel app_id), settings page, e2e `no_auto_show_in_listed_apps`; 🟡 Stevia import only checked against its schema, not on the device
-* ✅ editing in clients without a text change cause (Qt): edits detected from the text, e2e `editing_with_cursor_moves_qt`; 🟡 not yet tried with real Qt/Chromium apps on the device
-* ✅ preedit kept while GTK deletes a selected text or the app changes it, preedit committed by phoc on touch recognised, e2e `typing_over_a_selected_search`; traced on the device in GNOME Maps
-* ✅ home bar long press toggles the keyboard (`Visible` reaches Phosh's proxy), e2e `home_bar_toggle`, checked on the device
+* Debian packages with a non-default Phosh-OSK alternative, generated
+  dependencies, AppStream metadata and man pages
+* Release workflow for arm64 packages, triggered by a `v*` tag
+* Fallback to the system keyboard
 
-## Stage 6 – performance
-* measured on device: key frame ~1 ms, cached shift ~2 ms, glide decode p50 2.5 ms (big core); ✅ shift states pre-rendered; ⬜ partial damage
+## Open before 1.0.0
 
-## Stage 7 – device integration ✅/🟡
-* user-prefix deploy, `glissando-trial`, `glissando-session` with automatic
-  fallback, seccomp network restriction ✅ scripts written; trial on device ✅ (by the user)
-* ✅ Debian packages (`packaging/debian/build-deb.sh`) with a non-default Phosh-OSK alternative; install simulated on the device
+* Manual device checks on the FLX1s: Qt and Chromium apps, live speech,
+  terminals, password fields, rotation, login, suspend (#8)
+* Fallback to the system keyboard on a device (#9)
+* Install, upgrade and removal cycle on a device (#10)
+* Text input against newer GTK and phoc (#7)
+* Performance measurements on the device (#22)
+* Updates through an APT repository (#21)
+* Published dictionary artifact for CI (#14)
+* Signed release artifacts, and a release workflow run against a real tag (#16)
+* Translation review (#25)
+* Decision on postmarketOS packaging (#19)
+* Release candidate and public test period (#29, #30), then the release (#31)
+  and maintenance setup (#32)
 
-## Privacy ✅
-* `tests/privacy/check.sh`: no networking crates, no DNS imports, e2e under
-  socket guard with zero attempts, e2e in empty network namespace.
+## Later
+
+Not in 1.0; these can return in a later 1.x release:
+
+* Split layout
+* FUTO neural glide backend ([ARCHITECTURE.md](ARCHITECTURE.md) explains why it
+  is deferred)
+* New languages and layouts
+* Partial damage rendering, unless device measurements show a battery problem
+* Flatpak packaging
