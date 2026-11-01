@@ -124,6 +124,23 @@ impl ClipboardHistory {
 mod tests {
     use super::*;
 
+    /// pinned-clips as promised for 1.x: texts separated by U+001E.
+    #[test]
+    fn reads_the_pinned_clips_format() {
+        let dir = std::env::temp_dir().join(format!("glissando-pinned-format-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pinned-clips");
+        std::fs::write(&path, "first\u{1e}second\nline").unwrap();
+
+        let mut h = ClipboardHistory::default();
+        h.configure(true, 1, Some(path));
+
+        let texts: Vec<String> = h.items().into_iter().filter(|c| c.pinned).map(|c| c.text).collect();
+        assert_eq!(texts, vec!["first", "second\nline"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn history_rules() {
         let mut h = ClipboardHistory::default();

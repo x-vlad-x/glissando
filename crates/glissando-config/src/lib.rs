@@ -240,4 +240,52 @@ mod tests {
         assert!(!c.auto_show_blocked("org.gnome.Console"));
         assert!(!c.auto_show_blocked(""));
     }
+
+    /// config.toml as promised for 1.x. A failure here means existing files
+    /// would change meaning: add a migration instead of editing the fixture.
+    #[test]
+    fn reads_the_config_format() {
+        let c: Config = toml::from_str(include_str!("../tests/fixtures/config.toml")).unwrap();
+        let expected = Config {
+            layouts: vec!["ru".into(), "en".into()],
+            multilingual: false,
+            theme: ThemeMode::Dark,
+            key_borders: true,
+            font: "Noto Sans".into(),
+            font_scale: 1.1,
+            height: 0.4,
+            height_landscape: 0.5,
+            number_row: true,
+            terminal_keys: false,
+            hints: false,
+            key_popup: false,
+            long_press_ms: 400,
+            haptics: false,
+            haptic_strength: 50.0,
+            haptic_ms: 30,
+            glide: false,
+            glide_trail: false,
+            glide_delete: false,
+            glide_cursor: false,
+            trackpad_long_press_space: true,
+            one_handed: OneHanded::Left,
+            suggestions: false,
+            autocorrect: false,
+            autocap: false,
+            autospace: false,
+            double_space_period: false,
+            next_word: false,
+            personalization: false,
+            composing_underline: false,
+            clipboard_history: false,
+            clipboard_hours: 3,
+            emoji_recent: false,
+            emoji_suggestions: false,
+            voice: true,
+            no_auto_show: vec!["org.gnome.Calculator".into()],
+            user_data_epoch: 2,
+            user_dict_epoch: 5,
+        };
+        assert_eq!(c, expected);
+    }
 }
