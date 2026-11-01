@@ -1,0 +1,48 @@
+.TH GLISSANDO 1 "" "glissando" "User Commands"
+.SH NAME
+glissando \- private on-screen keyboard for Phosh
+.SH SYNOPSIS
+.B glissando
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B glissando
+is an on-screen keyboard for Wayland phones with glide typing, prediction,
+auto-correction, emoji and clipboard panels. It works offline. The session
+normally starts it through the Phosh-OSK alternative.
+.SH OPTIONS
+.TP
+.B \-\-replace
+Take over sm.puri.OSK0 from the running keyboard.
+.TP
+.B \-\-show
+Show immediately, typing with the virtual keyboard until a text field is
+focused.
+.TP
+.B \-\-no\-dbus
+Do not register on the session bus (for testing).
+.TP
+.BI \-\-dump\-geometry " FILE"
+Write key positions as JSON to \fIFILE\fR whenever they change (for testing).
+.TP
+.B \-\-version
+Print the version.
+.TP
+.BR \-h ", " \-\-help
+Print the options.
+.SH ENVIRONMENT
+.TP
+.B GLISSANDO_DATA_DIR
+Extra data directory.
+.TP
+.B GLISSANDO_CONFIG
+Configuration file.
+.TP
+.B GLISSANDO_DEBUG
+Log state changes when not empty. Typed text is never logged.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/glissando/config.toml
+Configuration, written by \fBglissando\-settings\fR(1).
+.SH SEE ALSO
+.BR glissando\-settings (1),
+.BR glissando\-voice (1)
