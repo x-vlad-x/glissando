@@ -38,8 +38,13 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
+/// glissando-trial always passes the variable on, empty unless it was set.
+fn debug_flag(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| !v.is_empty())
+}
+
 fn debug() -> bool {
-    std::env::var_os("GLISSANDO_DEBUG").is_some()
+    debug_flag(std::env::var_os("GLISSANDO_DEBUG").as_deref())
 }
 
 macro_rules! dlog {
@@ -135,6 +140,11 @@ pub struct App {
     osk: Option<Rc<OskService>>,
     haptics: Haptics,
     auto_show: bool,
+    /// The settings `kb.config` was based on, to tell what the quick menu
+    /// changed from what another process wrote to the file.
+    saved_config: Config,
+    /// Keeps the desktop settings being followed alive.
+    _desktop_settings: Vec<gio::Settings>,
     dump_geometry: Option<std::path::PathBuf>,
     last_geometry: String,
     save_timer: Option<glib::SourceId>,
@@ -162,6 +172,10 @@ pub fn voice_available() -> bool {
         .unwrap_or(false)
 }
 
+fn auto_show_wanted() -> bool {
+    std::env::var_os("GLISSANDO_AUTOSHOW").is_some() || dbus::osk_enabled()
+}
+
 pub struct Options {
     pub replace: bool,
     pub show: bool,
@@ -184,7 +198,20 @@ impl App {
         if config.key_borders { t.with_borders() } else { t }
     }
 
+    /// Write what the quick menu changed. A failed write is tried again the
+    /// next time the file changes, for example once a typo in it is fixed.
+    pub fn save_config_changes(&mut self) {
+        if self.kb.config == self.saved_config {
+            return;
+        }
+        match Config::save_changes(&self.saved_config, &self.kb.config) {
+            Ok(()) => self.saved_config = self.kb.config.clone(),
+            Err(e) => eprintln!("glissando: saving config failed: {e}"),
+        }
+    }
+
     pub fn apply_config(&mut self, config: Config, layouts: Vec<glissando_core::layout::Layout>) {
+        self.saved_config = config.clone();
         self.theme = Self::theme_for(&config);
         self.renderer.set_font(&config.font);
         self.haptics.enabled = config.haptics;
@@ -212,6 +239,26 @@ impl App {
     /// opens only on request (e.g. a calculator with its own keypad).
     fn app_blocked(&self) -> bool {
         self.active_app.as_deref().map(|a| self.kb.config.auto_show_blocked(a)).unwrap_or(false)
+    }
+
+    /// `screen-keyboard-enabled` changed. It only governs showing on focus: an
+    /// explicit `SetVisible` from Phosh's home bar still works, as at startup.
+    fn osk_enabled_changed(&mut self) {
+        self.auto_show = auto_show_wanted();
+        dlog!("auto show {}", self.auto_show);
+        self.update_visibility();
+        self.flush();
+    }
+
+    /// The system colour scheme changed. A theme chosen in the settings stays.
+    fn color_scheme_changed(&mut self) {
+        if self.kb.config.theme != ThemeMode::System {
+            return;
+        }
+        self.theme = Self::theme_for(&self.kb.config);
+        dlog!("system theme {}", if self.theme.dark { "dark" } else { "light" });
+        self.after_input();
+        self.flush();
     }
 
     fn toplevels_changed(&mut self) {
@@ -712,7 +759,8 @@ impl App {
                     self.send_vk_key(k.into(), 0)
                 }
                 Action::Chord(k, m) => {
-                    dlog!("chord {k:?} {m:?}");
+                    // The key stays out of the log: it can be a typed letter.
+                    dlog!("chord {m:?}");
                     self.send_chord(k, m)
                 }
                 Action::Haptic(h) => self.haptics.vibrate(match h {
@@ -737,9 +785,7 @@ impl App {
                 }
                 Action::Resize => self.update_height(),
                 Action::SaveConfig => {
-                    if let Err(e) = self.kb.config.save() {
-                        eprintln!("glissando: saving config failed: {e}");
-                    }
+                    self.save_config_changes();
                     self.theme = Self::theme_for(&self.kb.config);
                     self.update_height();
                 }
@@ -1057,7 +1103,9 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         forced_visible: opts.show,
         osk: None,
         haptics,
-        auto_show: std::env::var_os("GLISSANDO_AUTOSHOW").is_some() || dbus::osk_enabled(),
+        auto_show: auto_show_wanted(),
+        saved_config: config.clone(),
+        _desktop_settings: Vec::new(),
         dump_geometry: opts.dump_geometry.clone(),
         last_geometry: String::new(),
         save_timer: None,
@@ -1099,6 +1147,26 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
             },
         );
         app.borrow_mut().osk = Some(osk);
+    }
+    {
+        let w = Rc::downgrade(&app);
+        let watched = dbus::watch_osk_enabled(move || {
+            if let Some(a) = w.upgrade()
+                && let Ok(mut a) = a.try_borrow_mut()
+            {
+                a.osk_enabled_changed();
+            }
+        });
+        app.borrow_mut()._desktop_settings.extend(watched);
+        let w = Rc::downgrade(&app);
+        let watched = dbus::watch_color_scheme(move || {
+            if let Some(a) = w.upgrade()
+                && let Ok(mut a) = a.try_borrow_mut()
+            {
+                a.color_scheme_changed();
+            }
+        });
+        app.borrow_mut()._desktop_settings.extend(watched);
     }
     {
         let mut a = app.borrow_mut();
@@ -1428,7 +1496,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 }
             }
             wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
-                if std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some() {
+                if app.kb.log_input() {
                     eprintln!("motion down={} {surface_x:.0},{surface_y:.0}", app.pointer_down);
                 }
                 app.pointer_pos = (surface_x as f32, surface_y as f32);
@@ -1438,7 +1506,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 app.kb.touch_motion(POINTER_ID, surface_x as f32, surface_y as f32, now);
             }
             wl_pointer::Event::Button { button, state: WEnum::Value(st), .. } if button == BTN_LEFT => {
-                if std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some() {
+                if app.kb.log_input() {
                     eprintln!("button {st:?} at {:?}", app.pointer_pos);
                 }
                 let (x, y) = app.pointer_pos;
@@ -1613,4 +1681,17 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, ()> 
 fn owned_fd_from_raw(fd: i32) -> OwnedFd {
     // SAFETY: only used with descriptors we just created.
     unsafe { OwnedFd::from_raw_fd(fd) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::debug_flag;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn empty_debug_variable_is_off() {
+        assert!(!debug_flag(None));
+        assert!(!debug_flag(Some(OsStr::new(""))));
+        assert!(debug_flag(Some(OsStr::new("1"))));
+    }
 }

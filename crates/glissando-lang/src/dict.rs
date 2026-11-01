@@ -426,4 +426,25 @@ mod tests {
         let w = d.lookup("world").unwrap().0;
         assert_eq!(d.bigram(h, w), Some(100));
     }
+
+    /// GLDICT01 as promised for 1.x. A failure here means dictionaries already
+    /// installed stop working: raise the format version instead of editing
+    /// the fixture.
+    #[test]
+    fn keeps_the_file_format() {
+        let bytes = include_bytes!("../tests/fixtures/small.gld");
+        let d = Dict::from_bytes(bytes.to_vec()).unwrap();
+        assert_eq!(d.word_count(), 4);
+        assert_eq!(d.lookup("there").unwrap().1, 160);
+        assert_eq!(d.lookup("über").unwrap().1, 120);
+        let the = d.lookup("the").unwrap().0;
+        assert_eq!(d.word(d.successors(the)[0].0), "there");
+
+        let mut b = DictBuilder::default();
+        for (w, f) in [("the", 220), ("there", 160), ("Berlin", 140), ("über", 120)] {
+            b.add_word(w, f);
+        }
+        b.add_bigram("the", "there", 90);
+        assert!(b.build() == bytes, "the builder writes a different file");
+    }
 }

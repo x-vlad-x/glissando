@@ -3,7 +3,6 @@
 //! leaves the device.
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -76,26 +75,15 @@ impl UserModel {
             return Ok(());
         }
         self.prune();
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
+        let mut out = String::new();
+        for (w, u) in &self.words {
+            let flags = format!("{}{}", if u.pinned { "p" } else { "" }, if u.blocked { "b" } else { "" });
+            out.push_str(&format!("w\t{w}\t{}\t{}\t{flags}\n", u.count, u.last));
         }
-        let tmp = path.with_extension("tmp");
-        {
-            let mut opts = std::fs::OpenOptions::new();
-            opts.write(true).create(true).truncate(true);
-            #[cfg(unix)]
-            std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-            let mut f = std::io::BufWriter::new(opts.open(&tmp)?);
-            for (w, u) in &self.words {
-                let flags = format!("{}{}", if u.pinned { "p" } else { "" }, if u.blocked { "b" } else { "" });
-                writeln!(f, "w\t{w}\t{}\t{}\t{flags}", u.count, u.last)?;
-            }
-            for ((a, b), c) in &self.bigrams {
-                writeln!(f, "b\t{a}\t{b}\t{c}")?;
-            }
-            f.flush()?;
+        for ((a, b), c) in &self.bigrams {
+            out.push_str(&format!("b\t{a}\t{b}\t{c}\n"));
         }
-        std::fs::rename(&tmp, &path)?;
+        glissando_config::write_private(&path, out.as_bytes())?;
         self.dirty = false;
         Ok(())
     }
@@ -242,6 +230,36 @@ mod tests {
         assert!(m2.known("glissando").is_none());
         m2.clear();
         assert!(!path.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// user/*.tsv as promised for 1.x.
+    #[test]
+    fn keeps_the_file_format() {
+        let dir = std::env::temp_dir().join(format!("glissando-user-format-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("en.tsv");
+        let lines = [
+            "b\tgood\tmorning\t3",
+            "w\tplain\t2\t1700000000\t",
+            "w\tfoo\t1\t1700000001\tp",
+            "w\tbar\t0\t1700000002\tb",
+        ];
+        std::fs::write(&path, lines.join("\n")).unwrap();
+
+        let mut m = UserModel::load(&path);
+        assert_eq!(m.known("plain").unwrap().count, 2);
+        assert!(m.known("foo").unwrap().pinned);
+        assert!(m.is_blocked("bar"));
+        assert_eq!(m.bigram("good", "morning"), 3);
+
+        m.dirty = true;
+        m.save().unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        for line in ["w\tplain\t2\t", "w\tfoo\t1\t", "w\tbar\t0\t", "b\tgood\tmorning\t3"] {
+            assert!(saved.lines().any(|l| l.starts_with(line)), "{line:?} not in {saved:?}");
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 }

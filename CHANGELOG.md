@@ -7,6 +7,21 @@
   `sm.puri.OSK0.desktop` failed with "Oh no! Something has gone wrong".
   Thanks to [@VipinVIP](https://github.com/VipinVIP) for tracking this down
   on a system without systemd and proposing the fix (#1)
+- A recording no longer stays in the runtime directory when a field loses
+  focus during transcription: the audio file now has no name (#23)
+- `GLISSANDO_DEBUG` no longer logs the letter of Ctrl and Alt shortcuts,
+  `GLISSANDO_DEBUG_INPUT` logs nothing in password fields, and crash messages
+  no longer quote text (#23)
+- With the automatic theme, a change of the system colour scheme applies at
+  once (#5)
+- Turning the screen keyboard off or on in the system settings applies at
+  once instead of at the next login (#4)
+- The settings app no longer overwrites changes made from the keyboard's
+  quick menu while it is open (#3)
+- Recent emoji and pinned clipboard items are written atomically and readable
+  only by you, so a crash during a write can no longer lose them (#6)
+- A damaged `config.toml` no longer deletes learned words and is no longer
+  replaced by the defaults; quick menu changes are saved once it is fixed
 
 ## 0.3.0 – third preview
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Privacy checks:
 #  1. no networking crates in the dependency graph,
-#  2. the keyboard binary imports no name-resolution functions,
+#  2. the shipped binaries import no name-resolution functions,
 #  3. the full end-to-end suite runs with a socket guard (any non-local
 #     socket or DNS lookup is refused and recorded -> failure),
 #  4. the end-to-end suite passes inside a network namespace without any
@@ -15,9 +15,11 @@ deny='^(reqwest|hyper|ureq|curl|isahc|surf|attohttpc|openssl|native-tls|rustls|t
 bad=$(cargo metadata --format-version 1 --locked 2>/dev/null | python3 -I -c 'import json,sys; print("\n".join(sorted({p["name"] for p in json.load(sys.stdin)["packages"]})))' | grep -E "$deny" || true)
 if [ -n "$bad" ]; then echo "FAIL networking crates: $bad"; fail=1; else echo "PASS no networking crates"; fi
 
-cargo build -q --release -p glissando -p glissando-testkit
-syms=$(nm -D --undefined-only target/release/glissando | grep -wE 'getaddrinfo|gethostbyname|gethostbyname2|inet_pton|inet_aton|res_query' || true)
-if [ -n "$syms" ]; then echo "FAIL name resolution imports: $syms"; fail=1; else echo "PASS no name-resolution imports"; fi
+cargo build -q --release -p glissando -p glissando-settings -p glissando-voice -p glissando-testkit
+for bin in glissando glissando-settings glissando-voice; do
+    syms=$(nm -D --undefined-only "target/release/$bin" | grep -wE 'getaddrinfo|gethostbyname|gethostbyname2|inet_pton|inet_aton|res_query' || true)
+    if [ -n "$syms" ]; then echo "FAIL name resolution imports in $bin: $syms"; fail=1; else echo "PASS no name-resolution imports in $bin"; fi
+done
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

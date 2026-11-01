@@ -106,16 +106,8 @@ impl ClipboardHistory {
             let _ = std::fs::remove_file(p);
             return;
         }
-        if let Some(d) = p.parent() {
-            let _ = std::fs::create_dir_all(d);
-        }
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-        if let Ok(mut f) = opts.open(p) {
-            use std::io::Write;
-            let _ = f.write_all(pinned.join("\u{1e}").as_bytes());
+        if let Err(e) = glissando_config::write_private(p, pinned.join("\u{1e}").as_bytes()) {
+            eprintln!("glissando: saving {} failed: {e}", p.display());
         }
     }
 }
@@ -123,6 +115,23 @@ impl ClipboardHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// pinned-clips as promised for 1.x: texts separated by U+001E.
+    #[test]
+    fn reads_the_pinned_clips_format() {
+        let dir = std::env::temp_dir().join(format!("glissando-pinned-format-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pinned-clips");
+        std::fs::write(&path, "first\u{1e}second\nline").unwrap();
+
+        let mut h = ClipboardHistory::default();
+        h.configure(true, 1, Some(path));
+
+        let texts: Vec<String> = h.items().into_iter().filter(|c| c.pinned).map(|c| c.text).collect();
+        assert_eq!(texts, vec!["first", "second\nline"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn history_rules() {
@@ -141,5 +150,29 @@ mod tests {
         h.configure(false, 1, None);
         h.add("three", false);
         assert_eq!(h.items().len(), 1, "disabled history records nothing");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pinned_clips_are_replaced_atomically_and_privately() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let dir = std::env::temp_dir().join(format!("glissando-clips-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pinned-clips");
+        std::fs::write(&path, "old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let before = std::fs::metadata(&path).unwrap();
+
+        let mut h = ClipboardHistory::default();
+        h.configure(true, 1, Some(path.clone()));
+        h.add("new", false);
+        h.toggle_pin("new");
+
+        let after = std::fs::metadata(&path).unwrap();
+        assert_eq!(after.permissions().mode() & 0o777, 0o600);
+        assert_ne!(before.ino(), after.ino(), "written in place");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new\u{1e}old");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

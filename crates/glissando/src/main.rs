@@ -147,7 +147,17 @@ fn bench_render() {
     println!("buffer {pw}x{ph} at scale {scale}");
 }
 
+/// The standard message of a panic can quote the text being processed, and
+/// stderr ends up in the journal, so only the location is reported.
+fn panic_report(info: &std::panic::PanicHookInfo) -> String {
+    match info.location() {
+        Some(l) => format!("glissando: internal error at {}:{}", l.file(), l.line()),
+        None => "glissando: internal error".to_string(),
+    }
+}
+
 fn main() {
+    std::panic::set_hook(Box::new(|info| eprintln!("{}", panic_report(info))));
     // A keyboard needs no GVfs; keep gio local-only (no daemons, no network mounts).
     // SAFETY: no other threads exist yet.
     unsafe { std::env::set_var("GIO_USE_VFS", "local") };
@@ -178,6 +188,10 @@ fn main() {
             }
         }
     }
+    let epochs = std::cell::RefCell::new(config::EpochTracker::from_file());
+    config::remove_stale_temporary_files(&config::config_dir());
+    config::remove_stale_temporary_files(&config::data_dir().join("user"));
+    config::remove_stale_temporary_files(&config::state_dir());
     let config = Config::load();
     let layouts = load_layouts(&config);
     let langs = load_languages(&layouts);
@@ -208,7 +222,18 @@ fn main() {
                     | gio::FileMonitorEvent::Created
                     | gio::FileMonitorEvent::Changed
             ) {
-                let cfg = Config::load();
+                if let Ok(mut app) = a.try_borrow_mut() {
+                    app.save_config_changes();
+                }
+                // A broken file must not count as the defaults.
+                let cfg = match Config::read() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("glissando: ignoring invalid {}: {e}", Config::path().display());
+                        return;
+                    }
+                };
+                let requested = epochs.borrow_mut().observe(&cfg);
                 if let Ok(mut app) = a.try_borrow_mut()
                     && cfg != app.kb.config
                 {
@@ -219,18 +244,24 @@ fn main() {
                         let langs = load_languages(&layouts);
                         let mut e = Engine::new(langs, engine_settings(&cfg));
                         std::mem::swap(&mut app.kb.engine, &mut e);
-                        e.save_user_data();
-                    }
-                    let old = app.kb.config.clone();
-                    if cfg.user_data_epoch != old.user_data_epoch {
-                        app.kb.engine.clear_user_data();
-                        panels::RECENTS.with(|r| r.borrow_mut().clear());
-                        clipboard::HISTORY.with(|h| h.borrow_mut().clear_all());
-                    } else if cfg.user_dict_epoch != old.user_dict_epoch {
-                        let dir = config::data_dir().join("user");
-                        for l in app.kb.engine.langs.iter_mut() {
-                            l.user = UserModel::load(&dir.join(format!("{}.tsv", l.code)));
+                        // Saving here would bring deleted words back.
+                        if requested != config::EpochChange::UserData {
+                            e.save_user_data();
                         }
+                    }
+                    match requested {
+                        config::EpochChange::UserData => {
+                            app.kb.engine.clear_user_data();
+                            panels::RECENTS.with(|r| r.borrow_mut().clear());
+                            clipboard::HISTORY.with(|h| h.borrow_mut().clear_all());
+                        }
+                        config::EpochChange::UserDict => {
+                            let dir = config::data_dir().join("user");
+                            for l in app.kb.engine.langs.iter_mut() {
+                                l.user = UserModel::load(&dir.join(format!("{}.tsv", l.code)));
+                            }
+                        }
+                        config::EpochChange::None => {}
                     }
                     app.apply_config(cfg, layouts);
                 }
@@ -264,4 +295,27 @@ mod libc_sig {
     pub const SIGHUP: i32 = 1;
     pub const SIGINT: i32 = 2;
     pub const SIGTERM: i32 = 15;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn panic_report_does_not_quote_text() {
+        let seen = Arc::new(Mutex::new(String::new()));
+        let hook_seen = seen.clone();
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| *hook_seen.lock().unwrap() = panic_report(info)));
+        let result = std::panic::catch_unwind(|| {
+            let typed = String::from("пароль");
+            let _ = &typed[1..];
+        });
+        std::panic::set_hook(previous);
+        assert!(result.is_err());
+        let report = seen.lock().unwrap();
+        assert!(report.contains("internal error"), "{report}");
+        assert!(!report.contains("пароль"), "{report}");
+    }
 }

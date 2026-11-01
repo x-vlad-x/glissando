@@ -246,6 +246,10 @@ impl Keyboard {
         let idx = self.layouts.iter().position(|l| l.id == layout_id).unwrap_or(0);
         self.metrics = Metrics::new(self.landscape, self.height_pref(), self.config.font_scale);
         self.select_layout(idx);
+        // An open quick menu must not send back a copy from before this change.
+        if let Some(p) = &mut self.panel {
+            p.refresh(&self.config);
+        }
         self.actions.push(Action::Resize);
     }
 
@@ -1088,9 +1092,6 @@ impl Keyboard {
                 self.config = c;
                 self.set_config(self.config.clone(), layouts);
                 self.actions.push(Action::SaveConfig);
-                if let Some(p) = &mut self.panel {
-                    p.refresh(&self.config);
-                }
             }
             PanelHit::OpenSettings => {
                 self.close_panel();
@@ -1193,8 +1194,17 @@ impl Keyboard {
         }
     }
 
+    /// Touch logs show which keys were pressed, so private fields stay out.
+    fn input_loggable(&self) -> bool {
+        !self.field.private()
+    }
+
+    pub fn log_input(&self) -> bool {
+        self.input_loggable() && std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some()
+    }
+
     fn handle_events(&mut self, events: Vec<TouchEvent>) {
-        if !events.is_empty() && std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some() {
+        if !events.is_empty() && self.log_input() {
             eprintln!("touch events {events:?}");
         }
         for e in events {
@@ -1602,6 +1612,17 @@ mod tests {
     use glissando_lang::model::Language;
     use glissando_lang::user::UserModel;
 
+    #[test]
+    fn open_quick_menu_follows_changes_from_the_settings_app() {
+        let mut kb = test_keyboard(&["en"]);
+        kb.open_panel(PanelKind::Menu);
+        let newer = Config { user_data_epoch: 4, ..kb.config.clone() };
+
+        kb.set_config(newer, Vec::new());
+
+        assert_eq!(kb.panel.as_ref().unwrap().config.user_data_epoch, 4);
+    }
+
     pub fn test_keyboard(layouts: &[&str]) -> Keyboard {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/layouts");
         let sym = SymbolSet::parse(&std::fs::read_to_string(format!("{dir}/symbols.toml")).unwrap()).unwrap();
@@ -1649,6 +1670,16 @@ mod tests {
         kb.touch_up(1, x - 60.0, y, 1200);
         let navs = kb.take_actions().into_iter().filter(|a| matches!(a, Action::Nav(NavKey::Left))).count();
         assert!(navs >= 3, "{navs}");
+    }
+
+    #[test]
+    fn touches_in_private_fields_are_not_loggable() {
+        let mut kb = test_keyboard(&["en"]);
+        assert!(kb.input_loggable());
+        kb.activate(FieldInfo { purpose: Purpose::Password, ..FieldInfo::default() });
+        assert!(!kb.input_loggable());
+        kb.activate(FieldInfo { sensitive: true, ..FieldInfo::default() });
+        assert!(!kb.input_loggable());
     }
 
     fn tap(kb: &mut Keyboard, name: &str, t: u32) -> Vec<Action> {
