@@ -1,21 +1,64 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: glissando-voice
+Comment: The Rust crates linked into glissando-voice are listed with their
+ licence texts in /usr/share/doc/glissando-voice/THIRD-PARTY.md.
 
 Files: usr/bin/glissando-voice
 Copyright: 2026 Vladislav Shadiuk
 License: GPL-3+
 
 Files: usr/libexec/glissando/whisper-cli
-Copyright: The ggml authors (whisper.cpp)
-License: MIT
+Copyright: 2023-2024 The ggml authors
+           2023 Jeffrey Quesnelle and Bowen Peng
+           2017 Sean Barrett
+           2025 David Reid
+License: Expat and MIT-0
+Comment: built from whisper.cpp (The ggml authors), which contains the YaRN
+ scaling code (Quesnelle and Peng) and stb_vorbis (Sean Barrett), both under
+ the Expat licence, and miniaudio (David Reid), used here under MIT-0.
 
 Files: usr/share/glissando/voice/ggml-base-q8_0.bin
-Copyright: OpenAI (Whisper model weights), converted by the whisper.cpp project
-License: MIT
+Copyright: 2022 OpenAI
+License: Expat
+Comment: Whisper base model weights, converted and quantized by the
+ whisper.cpp project.
 
 License: GPL-3+
  On Debian systems see /usr/share/common-licenses/GPL-3.
-License: MIT
+
+License: Expat
  Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files, to deal in the Software
- without restriction, subject to including the copyright notice.
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+License: MIT-0
+ Copyright 2025 David Reid
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy of
+ this software and associated documentation files (the "Software"), to deal in
+ the Software without restriction, including without limitation the rights to
+ use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+ of the Software, and to permit persons to whom the Software is furnished to do
+ so.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
