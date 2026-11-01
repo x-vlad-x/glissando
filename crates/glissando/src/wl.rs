@@ -229,6 +229,17 @@ impl App {
         self.flush();
     }
 
+    /// The system colour scheme changed. A theme chosen in the settings stays.
+    fn color_scheme_changed(&mut self) {
+        if self.kb.config.theme != ThemeMode::System {
+            return;
+        }
+        self.theme = Self::theme_for(&self.kb.config);
+        dlog!("system theme {}", if self.theme.dark { "dark" } else { "light" });
+        self.after_input();
+        self.flush();
+    }
+
     fn toplevels_changed(&mut self) {
         let active = self.toplevels.iter().find(|t| t.activated).map(|t| t.app_id.clone());
         if active != self.active_app {
@@ -1123,6 +1134,15 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
                 && let Ok(mut a) = a.try_borrow_mut()
             {
                 a.osk_enabled_changed();
+            }
+        });
+        app.borrow_mut()._desktop_settings.extend(watched);
+        let w = Rc::downgrade(&app);
+        let watched = dbus::watch_color_scheme(move || {
+            if let Some(a) = w.upgrade()
+                && let Ok(mut a) = a.try_borrow_mut()
+            {
+                a.color_scheme_changed();
             }
         });
         app.borrow_mut()._desktop_settings.extend(watched);

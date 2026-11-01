@@ -387,6 +387,27 @@ follows_screen_keyboard_enabled.desktop_settings = True
 
 
 @test
+def follows_system_colour_scheme(s):
+    s.gsettings("org.gnome.desktop.interface", "color-scheme", "prefer-dark")
+    s.wait(lambda: "system theme dark" in s.log("kb"), "dark theme")
+    s.gsettings("org.gnome.desktop.interface", "color-scheme", "default")
+    s.wait(lambda: "system theme light" in s.log("kb"), "light theme")
+follows_system_colour_scheme.desktop_settings = True
+
+
+@test
+def fixed_theme_ignores_system_colour_scheme(s):
+    s.gsettings("org.gnome.desktop.interface", "color-scheme", "prefer-dark")
+    # The accessibility key is watched the same way and proves the settings
+    # were delivered.
+    s.gsettings(A11Y, "screen-keyboard-enabled", "false")
+    s.wait(lambda: not shown(s), "settings delivered")
+    assert "system theme" not in s.log("kb")
+fixed_theme_ignores_system_colour_scheme.config = 'theme = "light"\n'
+fixed_theme_ignores_system_colour_scheme.desktop_settings = True
+
+
+@test
 def glide_typing(s):
     pts = []
     for ch in "hello":

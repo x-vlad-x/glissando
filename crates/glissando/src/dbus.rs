@@ -301,10 +301,16 @@ fn watch_setting(schema: &str, key: &str, changed: impl Fn() + 'static) -> Optio
     Some(settings)
 }
 
+const INTERFACE_SCHEMA: &str = "org.gnome.desktop.interface";
+const COLOR_SCHEME_KEY: &str = "color-scheme";
+
 /// Whether the desktop prefers a dark appearance (GNOME/Phosh setting).
 pub fn prefers_dark() -> bool {
-    desktop_setting("org.gnome.desktop.interface", "color-scheme")
-        .is_some_and(|s| s.string("color-scheme") == "prefer-dark")
+    desktop_setting(INTERFACE_SCHEMA, COLOR_SCHEME_KEY).is_some_and(|s| s.string(COLOR_SCHEME_KEY) == "prefer-dark")
+}
+
+pub fn watch_color_scheme(changed: impl Fn() + 'static) -> Option<gio::Settings> {
+    watch_setting(INTERFACE_SCHEMA, COLOR_SCHEME_KEY, changed)
 }
 
 const A11Y_SCHEMA: &str = "org.gnome.desktop.a11y.applications";
