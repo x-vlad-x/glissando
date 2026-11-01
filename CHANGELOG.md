@@ -20,6 +20,10 @@
   quick menu while it is open (#3)
 - Recent emoji and pinned clipboard items are written atomically and readable
   only by you, so a crash during a write can no longer lose them (#6)
+- Glide typing is off in password and other sensitive fields, where its
+  candidates showed the typed word in the suggestion strip
+- "Delete learned words" in the quick menu also deletes the words of languages
+  that are not enabled
 - A damaged `config.toml` no longer deletes learned words and is no longer
   replaced by the defaults; quick menu changes are saved once it is fixed
 
