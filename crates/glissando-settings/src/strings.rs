@@ -202,6 +202,85 @@ const DE: &[(&str, &str)] = &[
     ("Import from the Phosh keyboard (Stevia)", "Aus der Phosh-Tastatur (Stevia) übernehmen"),
     ("Import", "Übernehmen"),
     ("Remove", "Entfernen"),
+    (
+        "Enabled layouts are switched with the globe key, in the order shown.",
+        "Aktivierte Layouts werden mit der Globustaste in der angezeigten Reihenfolge gewechselt.",
+    ),
+    ("Move up", "Nach oben"),
+    (
+        "Suggest and correct in all enabled languages that share an alphabet",
+        "Vorschläge und Korrekturen in allen aktivierten Sprachen mit gemeinsamem Alphabet",
+    ),
+    ("Keys, layout, height, vibration", "Tasten, Layout, Höhe, Vibration"),
+    ("Always show digits above the letters", "Ziffern immer über den Buchstaben anzeigen"),
+    ("Touch & hold for digits and symbols", "Ziffern und Symbole durch langes Drücken"),
+    ("Show hints on letter keys", "Hinweise auf den Buchstabentasten anzeigen"),
+    ("Show the pressed key above the finger", "Gedrückte Taste über dem Finger anzeigen"),
+    ("Touch & hold duration (ms)", "Dauer des langen Drückens (ms)"),
+    ("Keyboard height (portrait)", "Tastaturhöhe (Hochformat)"),
+    ("Keyboard height (landscape)", "Tastaturhöhe (Querformat)"),
+    ("Vibration strength (%)", "Vibrationsstärke (%)"),
+    ("Vibration duration (ms)", "Vibrationsdauer (ms)"),
+    ("Light, dark, font", "Hell, dunkel, Schrift"),
+    ("Key borders", "Tastenränder"),
+    ("Higher contrast between keys", "Höherer Kontrast zwischen den Tasten"),
+    ("Font size", "Schriftgröße"),
+    ("Font family", "Schriftart"),
+    ("Gestures and trail", "Gesten und Spur"),
+    (
+        "Type words by sliding from letter to letter",
+        "Wörter eingeben, indem der Finger von Buchstabe zu Buchstabe gleitet",
+    ),
+    ("Glide trail", "Gleitspur"),
+    ("Show how the finger moves", "Fingerbewegung anzeigen"),
+    (
+        "Delete words by sliding left from the delete key",
+        "Wörter löschen, indem der Finger von der Löschtaste nach links gleitet",
+    ),
+    ("Slide on the space bar to move the cursor", "Auf der Leertaste gleiten, um den Cursor zu bewegen"),
+    ("Trackpad on long-press space", "Trackpad bei langem Drücken der Leertaste"),
+    ("Suggestions, auto-correction, capitalization", "Vorschläge, Autokorrektur, Großschreibung"),
+    ("Show word suggestions while typing", "Wortvorschläge beim Tippen anzeigen"),
+    ("Auto-space after suggestions", "Automatisches Leerzeichen nach Vorschlägen"),
+    ("Underline the word being typed", "Aktuell getipptes Wort unterstreichen"),
+    ("Turn off for apps with broken preedit support", "Für Apps mit fehlerhafter Preedit-Unterstützung ausschalten"),
+    ("History and retention", "Verlauf und Aufbewahrung"),
+    ("Keep copied text in memory to paste it later", "Kopierten Text im Speicher behalten, um ihn später einzufügen"),
+    ("Keep history for (hours)", "Verlauf aufbewahren (Stunden)"),
+    (
+        "Text copied from password managers is never recorded. History is kept in memory only; pinned items are stored on this device.",
+        "Aus Passwortmanagern kopierter Text wird nie aufgezeichnet. Der Verlauf liegt nur im Speicher; angeheftete Einträge werden auf diesem Gerät gespeichert.",
+    ),
+    ("Learned words, delete data", "Gelernte Wörter, Daten löschen"),
+    (
+        "glissando works entirely on this device. It has no network access, no telemetry and no accounts. Nothing you type leaves the phone.",
+        "glissando arbeitet vollständig auf diesem Gerät, ohne Netzwerkzugriff, Telemetrie und Konten. Nichts von dem, was du tippst, verlässt das Telefon.",
+    ),
+    (
+        "Learn new words and your word order on this device (never in password fields)",
+        "Neue Wörter und deine Wortfolge auf diesem Gerät lernen (nie in Passwortfeldern)",
+    ),
+    ("Remember recent emoji", "Zuletzt verwendete Emoji merken"),
+    (
+        "Personal dictionary, learned words, recent emoji and pinned clipboard items",
+        "Persönliches Wörterbuch, gelernte Wörter, zuletzt verwendete Emoji und angeheftete Einträge der Zwischenablage",
+    ),
+    ("Delete all personal data?", "Alle persönlichen Daten löschen?"),
+    ("This cannot be undone.", "Das kann nicht rückgängig gemacht werden."),
+    ("added by you", "von dir hinzugefügt"),
+    ("learned", "gelernt"),
+    ("Forget this word", "Dieses Wort vergessen"),
+    ("Version and licences", "Version und Lizenzen"),
+    (
+        "Free software under the GNU GPL v3 or later. Word lists: Android Open Source Project (Apache-2.0); word pair statistics: Leipzig Corpora Collection (CC BY 4.0); emoji names: Unicode CLDR (Unicode License v3).",
+        "Freie Software unter der GNU GPL v3 oder neuer. Wortlisten: Android Open Source Project (Apache-2.0); Wortpaarstatistik: Leipzig Corpora Collection (CC BY 4.0); Emoji-Namen: Unicode CLDR (Unicode License v3).",
+    ),
+    ("Configuration file", "Konfigurationsdatei"),
+    (
+        "Local speech recognition with whisper.cpp; audio never leaves the device",
+        "Lokale Spracherkennung mit whisper.cpp; Audio verlässt das Gerät nie",
+    ),
+    ("Personal data", "Persönliche Daten"),
 ];
 
 fn table() -> Option<&'static HashMap<&'static str, &'static str>> {
@@ -226,4 +305,50 @@ fn table() -> Option<&'static HashMap<&'static str, &'static str>> {
 
 pub fn tr(s: &'static str) -> &'static str {
     table().and_then(|t| t.get(s).copied()).unwrap_or(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The string literals passed to `tr` in the settings app.
+    fn used_strings() -> Vec<String> {
+        let source = include_str!("main.rs");
+        let mut found = Vec::new();
+        for (at, _) in source.match_indices("tr(") {
+            let is_call = source[..at].chars().next_back().is_none_or(|c| !c.is_alphanumeric() && c != '_');
+            let rest = source[at + 3..].trim_start();
+            if !is_call || !rest.starts_with('"') {
+                continue;
+            }
+            let end = rest[1..].find('"').expect("unterminated string");
+            found.push(rest[1..=end].to_string());
+        }
+        found
+    }
+
+    fn missing_in(table: &[(&str, &str)]) -> Vec<String> {
+        let used = used_strings();
+        assert!(used.len() > 100, "the scan found only {} strings", used.len());
+        used.into_iter().filter(|s| !table.iter().any(|(k, _)| k == s)).collect()
+    }
+
+    #[test]
+    fn every_string_is_translated_into_russian() {
+        assert_eq!(missing_in(RU), Vec::<String>::new());
+    }
+
+    #[test]
+    fn every_string_is_translated_into_german() {
+        assert_eq!(missing_in(DE), Vec::<String>::new());
+    }
+
+    #[test]
+    fn no_translation_is_left_over() {
+        let used = used_strings();
+        for table in [RU, DE] {
+            let unused: Vec<_> = table.iter().filter(|(k, _)| !used.iter().any(|u| u == k)).collect();
+            assert!(unused.is_empty(), "{unused:?}");
+        }
+    }
 }
