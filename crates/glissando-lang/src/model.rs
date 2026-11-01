@@ -2,7 +2,7 @@
 //! candidates for one or more simultaneously active languages.
 
 use crate::dict::Dict;
-use crate::search::{search, InChar, SearchOpts};
+use crate::search::{InChar, SearchOpts, search};
 use crate::user::UserModel;
 use glissando_core::text::fold_char;
 
@@ -152,7 +152,8 @@ impl Ranker<'_> {
                     } else {
                         CandKind::Correction
                     };
-                    let score = -m.cost + logf(m.freq) + lang.user.boost(&word) + lang.context_bonus(prev, &word) + prior;
+                    let score =
+                        -m.cost + logf(m.freq) + lang.user.boost(&word) + lang.context_bonus(prev, &word) + prior;
                     out.push(Candidate { text: word, score, lang: li, kind, cost: m.cost });
                 }
             }
@@ -310,7 +311,10 @@ mod tests {
     fn predictions_from_bigrams() {
         let en = Language::new(
             "en",
-            Some(test_dict(&[("good", 200), ("morning", 180), ("night", 170)], &[("good", "morning", 200), ("good", "night", 150)])),
+            Some(test_dict(
+                &[("good", 200), ("morning", 180), ("night", 170)],
+                &[("good", "morning", 200), ("good", "night", 150)],
+            )),
             UserModel::in_memory(),
         );
         let langs = vec![en];

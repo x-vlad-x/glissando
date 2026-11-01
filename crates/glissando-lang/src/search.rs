@@ -255,10 +255,7 @@ pub struct SpatialModel {
 
 impl SpatialModel {
     pub fn new(keys: Vec<(char, f32, f32)>) -> SpatialModel {
-        let keys = keys
-            .into_iter()
-            .map(|(c, x, y)| (c.to_lowercase().next().unwrap_or(c), x, y))
-            .collect();
+        let keys = keys.into_iter().map(|(c, x, y)| (c.to_lowercase().next().unwrap_or(c), x, y)).collect();
         SpatialModel { keys, sigma: 0.55 }
     }
 

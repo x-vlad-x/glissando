@@ -150,11 +150,7 @@ impl LayerGeometry {
     }
 
     pub fn nearest(&self, x: f32, y: f32) -> Option<usize> {
-        self.keys
-            .iter()
-            .enumerate()
-            .min_by(|a, b| a.1.hit.dist2(x, y).total_cmp(&b.1.hit.dist2(x, y)))
-            .map(|(i, _)| i)
+        self.keys.iter().enumerate().min_by(|a, b| a.1.hit.dist2(x, y).total_cmp(&b.1.hit.dist2(x, y))).map(|(i, _)| i)
     }
 
     pub fn find(&self, row: usize, col: usize) -> Option<usize> {
@@ -165,12 +161,10 @@ impl LayerGeometry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::{parse_row, RowDef};
+    use crate::layout::{RowDef, parse_row};
 
     fn layer(rows: &[&str]) -> Layer {
-        Layer {
-            rows: rows.iter().map(|r| RowDef { keys: parse_row(r).unwrap(), height: 1.0 }).collect(),
-        }
+        Layer { rows: rows.iter().map(|r| RowDef { keys: parse_row(r).unwrap(), height: 1.0 }).collect() }
     }
 
     #[test]

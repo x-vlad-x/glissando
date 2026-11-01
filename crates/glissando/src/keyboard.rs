@@ -3,18 +3,18 @@
 //! platform layer and a [`View`] for the renderer. Free of Wayland so it can
 //! be tested headless.
 
-use glissando_config::{Config, OneHanded};
 use crate::icons::Icon;
 use crate::panels::{PanelHit, PanelKind, PanelState};
-use crate::render::{popup_layout, KeyLabel, KeyView, Popup, PopupEntry, StripItem, StripView, View};
+use crate::render::{KeyLabel, KeyView, Popup, PopupEntry, StripItem, StripView, View, popup_layout};
 use crate::theme::Metrics;
+use glissando_config::{Config, OneHanded};
 use glissando_core::geometry::{GeometryParams, LayerGeometry, Rect};
-use glissando_core::layout::{parse_row, KeyAction, KeyDef, KeyStyle, Layer, Layout, RowDef};
+use glissando_core::layout::{KeyAction, KeyDef, KeyStyle, Layer, Layout, RowDef, parse_row};
 use glissando_core::text::CasePattern;
 use glissando_core::touch::{KeyKind, TouchConfig, TouchEvent, TouchMachine};
 use glissando_lang::engine::{Engine, FieldInfo, Op, Purpose, SuggestionKind};
 use glissando_lang::search::SpatialModel;
-use glissando_swipe::{clean_trace, KeyMap, Pt, ShapeDecoder};
+use glissando_swipe::{KeyMap, Pt, ShapeDecoder, clean_trace};
 
 /// Vertical distance between rows in key widths on a typical phone layout
 /// (row pitch / key pitch), used to normalise touch coordinates.
@@ -300,11 +300,7 @@ impl Keyboard {
             Purpose::Url => "letters@url",
             _ => "letters",
         };
-        if self.layouts[self.current].layer(name).is_some() {
-            name.to_string()
-        } else {
-            "letters".to_string()
-        }
+        if self.layouts[self.current].layer(name).is_some() { name.to_string() } else { "letters".to_string() }
     }
 
     /// Surface position -> model units: x in key widths, y in row pitches
@@ -551,11 +547,7 @@ impl Keyboard {
     }
 
     fn cased(&self, t: &str) -> String {
-        if self.shift != Shift::Off && t.chars().count() == 1 {
-            t.to_uppercase()
-        } else {
-            t.to_string()
-        }
+        if self.shift != Shift::Off && t.chars().count() == 1 { t.to_uppercase() } else { t.to_string() }
     }
 
     // ---- actions -------------------------------------------------------------
@@ -765,21 +757,33 @@ impl Keyboard {
             ));
             let n = ((w - 44.0 - qw) / 44.0).floor().max(0.0) as usize;
             for (i, e) in crate::panels::search_emoji(q, n).into_iter().enumerate() {
-                v.push((Rect::new(44.0 + qw + i as f32 * 44.0, 0.0, 44.0, h), StripItem::Text { text: e.clone(), emphasized: false }, StripTap::Emoji(e)));
+                v.push((
+                    Rect::new(44.0 + qw + i as f32 * 44.0, 0.0, 44.0, h),
+                    StripItem::Text { text: e.clone(), emphasized: false },
+                    StripTap::Emoji(e),
+                ));
             }
             return v;
         }
         let sugg = self.engine.suggestions();
         // Emoji matching the word being typed get a narrow slot on the right.
         let word_emoji = if self.config.emoji_suggestions && !self.engine.composing().is_empty() {
-            let best = sugg.iter().find(|s| s.autocorrect).map(|s| s.text.clone()).unwrap_or_else(|| self.engine.composing().to_string());
+            let best = sugg
+                .iter()
+                .find(|s| s.autocorrect)
+                .map(|s| s.text.clone())
+                .unwrap_or_else(|| self.engine.composing().to_string());
             crate::panels::emoji_for_word(&best).into_iter().next()
         } else {
             None
         };
         let w = if word_emoji.is_some() { w - 48.0 } else { w };
         if let Some(e) = &word_emoji {
-            v.push((Rect::new(w, 0.0, 48.0, h), StripItem::Text { text: e.clone(), emphasized: false }, StripTap::WordEmoji(e.clone())));
+            v.push((
+                Rect::new(w, 0.0, 48.0, h),
+                StripItem::Text { text: e.clone(), emphasized: false },
+                StripTap::WordEmoji(e.clone()),
+            ));
         }
         if !sugg.is_empty() {
             // Gboard order: second, best, third.
@@ -1321,11 +1325,11 @@ impl Keyboard {
     }
 
     fn decode_swipe(&mut self) {
-
         let raw: Vec<(f32, f32)> = self.touch.trace().iter().map(|p| self.to_units(p.x, p.y)).collect();
         let pts: Vec<Pt> = clean_trace(&raw, 0.05);
         let prev = self.engine.context_words(1).pop();
-        let cands = self.decoder.decode(&pts, &self.keymap, &self.engine.langs, &self.engine.active_priors(), prev.as_deref());
+        let cands =
+            self.decoder.decode(&pts, &self.keymap, &self.engine.langs, &self.engine.active_priors(), prev.as_deref());
         let words: Vec<String> = cands.into_iter().map(|c| c.word).collect();
         if words.is_empty() {
             return;
@@ -1350,7 +1354,9 @@ impl Keyboard {
             return KeyLabel::Text(l.clone());
         }
         match &def.action {
-            KeyAction::Text(t) => KeyLabel::Text(if self.layer.starts_with("letters") { self.cased(t) } else { t.clone() }),
+            KeyAction::Text(t) => {
+                KeyLabel::Text(if self.layer.starts_with("letters") { self.cased(t) } else { t.clone() })
+            }
             KeyAction::Shift => KeyLabel::Icon(match self.shift {
                 Shift::Off => Icon::Shift,
                 Shift::Once => Icon::ShiftOn,
@@ -1369,21 +1375,19 @@ impl Keyboard {
                     KeyLabel::None
                 }
             }
-            KeyAction::Layer(name) => KeyLabel::Text(
-                match name.as_str() {
-                    "letters" => self.layouts[self.current].letters_label(),
-                    "symbols" => {
-                        if self.layer == "symbols2" {
-                            "?123".to_string()
-                        } else {
-                            "?123".to_string()
-                        }
+            KeyAction::Layer(name) => KeyLabel::Text(match name.as_str() {
+                "letters" => self.layouts[self.current].letters_label(),
+                "symbols" => {
+                    if self.layer == "symbols2" {
+                        "?123".to_string()
+                    } else {
+                        "?123".to_string()
                     }
-                    "symbols2" => "=\\<".to_string(),
-                    "numpad" => "1234".to_string(),
-                    other => other.to_string(),
-                },
-            ),
+                }
+                "symbols2" => "=\\<".to_string(),
+                "numpad" => "1234".to_string(),
+                other => other.to_string(),
+            }),
             a => KeyLabel::Icon(action_icon(a)),
         }
     }
@@ -1459,7 +1463,8 @@ impl Keyboard {
 
     pub fn bench_trail(&mut self, now: u32) {
         let y = self.metrics.strip_height + self.metrics.row_height * 1.5;
-        self.trail = (0..40).map(|i| (10.0 + i as f32 * 8.0, y + (i as f32 * 0.3).sin() * 30.0, now - 200 + i * 5)).collect();
+        self.trail =
+            (0..40).map(|i| (10.0 + i as f32 * 8.0, y + (i as f32 * 0.3).sin() * 30.0, now - 200 + i * 5)).collect();
         self.trail_until = now + 300;
     }
 
@@ -1592,11 +1597,7 @@ impl LettersLabel for Layout {
     /// "ABC" / "АБВ" style label for returning to the letters layer.
     fn letters_label(&self) -> String {
         let a = self.alphabet();
-        if a.iter().any(|c| ('а'..='я').contains(c)) {
-            "АБВ".into()
-        } else {
-            "ABC".into()
-        }
+        if a.iter().any(|c| ('а'..='я').contains(c)) { "АБВ".into() } else { "ABC".into() }
     }
 }
 
@@ -1683,7 +1684,10 @@ mod tests {
         assert_eq!(kb.view(500).keys[ctrl].style, KeyStyle::Function, "one-shot");
         tap(&mut kb, "{alt}", 600);
         let acts = tap(&mut kb, "{left}", 700);
-        assert!(acts.contains(&Action::Chord(ChordKey::Nav(NavKey::Left), Mods { ctrl: false, alt: true })), "{acts:?}");
+        assert!(
+            acts.contains(&Action::Chord(ChordKey::Nav(NavKey::Left), Mods { ctrl: false, alt: true })),
+            "{acts:?}"
+        );
         let acts = tap(&mut kb, "c", 800);
         assert!(acts.iter().any(|a| matches!(a, Action::Ops(_))), "typed normally again: {acts:?}");
     }
@@ -1698,7 +1702,10 @@ mod typing_tests {
     fn typing_hello_updates_preedit_every_key() {
         let mut kb = test_keyboard(&["en"]);
         crate::panels::init_emoji(
-            crate::emoji::EmojiDb::load(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/emoji/emoji.tsv"))),
+            crate::emoji::EmojiDb::load(std::path::Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../data/emoji/emoji.tsv"
+            ))),
             crate::emoji::Recents::default(),
         );
         let mut last = String::new();

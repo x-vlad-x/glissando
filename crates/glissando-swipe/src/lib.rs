@@ -14,7 +14,7 @@
 //! coordinates are in key-width units.
 
 use glissando_lang::dict::Dict;
-use glissando_lang::model::{logf, Language};
+use glissando_lang::model::{Language, logf};
 use std::collections::HashMap;
 
 pub const RESAMPLE: usize = 48;
@@ -389,7 +389,9 @@ impl ShapeDecoder {
         let length: f32 = trace.windows(2).map(|w| w[0].d(w[1])).sum();
         let path = resample(trace, RESAMPLE);
         let speed = match times {
-            Some(t) if t.len() == trace.len() && t.last() > t.first() => relative_speed(&resample_times(trace, t, RESAMPLE)),
+            Some(t) if t.len() == trace.len() && t.last() > t.first() => {
+                relative_speed(&resample_times(trace, t, RESAMPLE))
+            }
             _ => vec![1.0; RESAMPLE],
         };
         let norm = normalize(&path);
@@ -539,7 +541,9 @@ impl ShapeDecoder {
                 if letters.is_empty() {
                     continue;
                 }
-                if letters[0].d(g.start) > self.params.end_radius || letters.last().unwrap().d(g.end) > self.params.end_radius {
+                if letters[0].d(g.start) > self.params.end_radius
+                    || letters.last().unwrap().d(g.end) > self.params.end_radius
+                {
                     continue;
                 }
                 let freq = if f > 0 { logf(f) } else { lang.dict_logf(&w).unwrap_or(-6.0) };
