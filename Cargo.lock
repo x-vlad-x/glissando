@@ -391,6 +391,9 @@ dependencies = [
 [[package]]
 name = "glissando-voice"
 version = "0.3.0"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "gobject-sys"

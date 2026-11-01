@@ -72,6 +72,7 @@ impl Run {
         writeln!(self.stdin, "{command}").unwrap();
     }
 
+    /// The first line with `prefix`, or an empty string at end of output.
     fn line_starting(&mut self, prefix: &str) -> String {
         loop {
             let line = self.read_line();
@@ -129,10 +130,12 @@ fn missing_engine_leaves_nothing() {
 #[test]
 fn cancelling_leaves_nothing() {
     let root = temp_dir("cancel");
-    let engine = engine_script(&root, "echo unexpected");
+    let marker = root.join("engine-ran");
+    let engine = engine_script(&root, "touch \"$root/engine-ran\"");
     let mut run = start(root, &engine);
     run.speak_then("cancel");
     assert_eq!(run.line_starting("text"), "");
+    assert!(!marker.exists(), "cancelling must not transcribe");
     run.assert_no_audio_left();
 }
 
@@ -140,7 +143,10 @@ fn cancelling_leaves_nothing() {
 fn killing_the_helper_during_transcription_leaves_nothing() {
     let root = temp_dir("killed");
     let started = root.join("started");
-    let engine = engine_script(&root, "touch \"$root/started\"\nsleep 2");
+    let engine = engine_script(
+        &root,
+        "echo $$ > \"$root/started.tmp\"\nmv \"$root/started.tmp\" \"$root/started\"\nwhile :; do :; done",
+    );
     let mut run = start(root, &engine);
     run.speak_then("stop");
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -148,5 +154,13 @@ fn killing_the_helper_during_transcription_leaves_nothing() {
         assert!(Instant::now() < deadline, "the engine did not start");
         std::thread::sleep(Duration::from_millis(10));
     }
+    let pid = std::fs::read_to_string(&started).unwrap();
+    let cmdline = format!("/proc/{}/cmdline", pid.trim());
     run.assert_no_audio_left();
+    // A killed process that nobody has reaped yet has an empty command line.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while std::fs::read(&cmdline).is_ok_and(|c| !c.is_empty()) {
+        assert!(Instant::now() < deadline, "the engine outlived the helper");
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }

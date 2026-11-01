@@ -82,16 +82,15 @@ pub fn find_model(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Stores the recording in a file that loses its name before any audio is
-/// written. The keyboard kills this helper when focus changes during
-/// transcription, so removing a named file afterwards would not be enough.
+/// Stores the recording in a file that never has a name. The keyboard kills
+/// this helper when focus changes during transcription, so removing a named
+/// file afterwards would not be enough.
 fn spool_wav(dir: &Path, samples: &[i16]) -> std::io::Result<std::fs::File> {
-    let path = dir.join(format!("glissando-voice-{}.wav", std::process::id()));
     let mut opts = std::fs::OpenOptions::new();
-    opts.read(true).write(true).create_new(true);
+    opts.read(true).write(true);
     std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-    let file = opts.open(&path)?;
-    std::fs::remove_file(&path)?;
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut opts, libc::O_TMPFILE);
+    let file = opts.open(dir)?;
     write_wav(&file, samples)?;
     Ok(file)
 }
@@ -383,7 +382,19 @@ fn main() {
     };
     drop(audio);
     let threads = args.threads.max(1).to_string();
-    let result = Command::new(&engine)
+    let mut engine_command = Command::new(&engine);
+    // The audio lives only as long as this process: without this the engine
+    // would outlive a killed helper and go on reading it.
+    // SAFETY: prctl is async-signal-safe and touches no shared state.
+    unsafe {
+        std::os::unix::process::CommandExt::pre_exec(&mut engine_command, || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let result = engine_command
         .args(["-m"])
         .arg(&model)
         .args(["-f"])
