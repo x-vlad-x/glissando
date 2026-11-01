@@ -107,7 +107,7 @@ root? See the trial mode in [docs/DEVICE.md](docs/DEVICE.md).
 ```bash
 cargo build --release
 cargo test
-python3 tools/build-dicts.py        # dictionaries (downloads public word lists once)
+python3 tools/build-dicts.py        # dictionaries (downloads pinned word lists once)
 packaging/cross/build-arm64.sh      # aarch64 build in a rootless podman container
 packaging/debian/build-deb.sh       # .deb packages
 ```
@@ -119,6 +119,9 @@ tools/devenv/fetch-sway.sh
 dbus-run-session -- python3 tests/e2e/e2e.py
 tests/privacy/check.sh
 ```
+
+Both run in CI. The voice test reports `SKIP` unless its model and test
+recording are present in `.devtools/voice`.
 
 Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 FuriOS input stack: [docs/research/furios.md](docs/research/furios.md) ·

@@ -241,6 +241,10 @@ class Session:
 TESTS = []
 
 
+class Skip(Exception):
+    """A test that could not run; reported as SKIP, never as PASS."""
+
+
 def test(fn):
     TESTS.append(fn)
     return fn
@@ -599,8 +603,7 @@ VOICE_INPUT = os.path.join(ROOT, ".devtools/voice/jfk.raw")
 @test
 def voice_input(s):
     if not (os.path.exists(VOICE_MODEL) and os.path.exists(VOICE_INPUT) and os.path.isdir(VOICE_ENGINE)):
-        print("  (skipped: run packaging/voice/build-whisper-host.sh and fetch the model)")
-        return
+        raise Skip("run packaging/voice/build-whisper-host.sh and fetch the model")
     top = OUT_H - s.current_height()
     s.pointer(f"tap {OUT_W - 79} {top + 22}")  # microphone in the toolbar
     time.sleep(0.5)
@@ -627,7 +630,7 @@ def main():
     if not os.path.exists(SWAY):
         print("sway not found; run tools/devenv/fetch-sway.sh", file=sys.stderr)
         return 2
-    failed = 0
+    failed = passed = skipped = 0
     for t in TESTS:
         if args.k not in t.__name__:
             continue
@@ -649,11 +652,16 @@ def main():
                     t(s)
                 finally:
                     s.close()
+            passed += 1
             print(f"PASS {t.__name__} ({time.time()-start:.1f}s)")
+        except Skip as e:
+            skipped += 1
+            print(f"SKIP {t.__name__}: {e}")
         except Exception:
             failed += 1
             print(f"FAIL {t.__name__}")
             traceback.print_exc()
+    print(f"{passed} passed, {failed} failed, {skipped} skipped")
     return 1 if failed else 0
 
 
