@@ -246,6 +246,10 @@ impl Keyboard {
         let idx = self.layouts.iter().position(|l| l.id == layout_id).unwrap_or(0);
         self.metrics = Metrics::new(self.landscape, self.height_pref(), self.config.font_scale);
         self.select_layout(idx);
+        // An open quick menu must not send back a copy from before this change.
+        if let Some(p) = &mut self.panel {
+            p.refresh(&self.config);
+        }
         self.actions.push(Action::Resize);
     }
 
@@ -1088,9 +1092,6 @@ impl Keyboard {
                 self.config = c;
                 self.set_config(self.config.clone(), layouts);
                 self.actions.push(Action::SaveConfig);
-                if let Some(p) = &mut self.panel {
-                    p.refresh(&self.config);
-                }
             }
             PanelHit::OpenSettings => {
                 self.close_panel();
@@ -1610,6 +1611,17 @@ mod tests {
     use glissando_lang::engine::Settings;
     use glissando_lang::model::Language;
     use glissando_lang::user::UserModel;
+
+    #[test]
+    fn open_quick_menu_follows_changes_from_the_settings_app() {
+        let mut kb = test_keyboard(&["en"]);
+        kb.open_panel(PanelKind::Menu);
+        let newer = Config { user_data_epoch: 4, ..kb.config.clone() };
+
+        kb.set_config(newer, Vec::new());
+
+        assert_eq!(kb.panel.as_ref().unwrap().config.user_data_epoch, 4);
+    }
 
     pub fn test_keyboard(layouts: &[&str]) -> Keyboard {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/layouts");

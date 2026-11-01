@@ -3,7 +3,6 @@
 //! leaves the device.
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -76,26 +75,15 @@ impl UserModel {
             return Ok(());
         }
         self.prune();
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
+        let mut out = String::new();
+        for (w, u) in &self.words {
+            let flags = format!("{}{}", if u.pinned { "p" } else { "" }, if u.blocked { "b" } else { "" });
+            out.push_str(&format!("w\t{w}\t{}\t{}\t{flags}\n", u.count, u.last));
         }
-        let tmp = path.with_extension("tmp");
-        {
-            let mut opts = std::fs::OpenOptions::new();
-            opts.write(true).create(true).truncate(true);
-            #[cfg(unix)]
-            std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-            let mut f = std::io::BufWriter::new(opts.open(&tmp)?);
-            for (w, u) in &self.words {
-                let flags = format!("{}{}", if u.pinned { "p" } else { "" }, if u.blocked { "b" } else { "" });
-                writeln!(f, "w\t{w}\t{}\t{}\t{flags}", u.count, u.last)?;
-            }
-            for ((a, b), c) in &self.bigrams {
-                writeln!(f, "b\t{a}\t{b}\t{c}")?;
-            }
-            f.flush()?;
+        for ((a, b), c) in &self.bigrams {
+            out.push_str(&format!("b\t{a}\t{b}\t{c}\n"));
         }
-        std::fs::rename(&tmp, &path)?;
+        glissando_config::write_private(&path, out.as_bytes())?;
         self.dirty = false;
         Ok(())
     }
