@@ -783,6 +783,14 @@ impl App {
                     self.user_hidden = true;
                     self.update_visibility();
                 }
+                Action::DeleteUserFiles => {
+                    let dir = glissando_config::data_dir().join("user");
+                    if let Err(e) = std::fs::remove_dir_all(dir)
+                        && e.kind() != std::io::ErrorKind::NotFound
+                    {
+                        eprintln!("glissando: deleting learned words failed: {e}");
+                    }
+                }
                 Action::Resize => self.update_height(),
                 Action::SaveConfig => {
                     self.save_config_changes();
