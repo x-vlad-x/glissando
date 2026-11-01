@@ -46,7 +46,7 @@ the speech model are covered by the `copyright` file of `glissando-voice`.
 | gtk4-sys | 0.11.5 | MIT | glissando | https://github.com/gtk-rs/gtk4-rs |
 | libadwaita | 0.9.2 | MIT | glissando | https://gitlab.gnome.org/World/Rust/libadwaita-rs |
 | libadwaita-sys | 0.9.2 | MIT | glissando | https://gitlab.gnome.org/World/Rust/libadwaita-rs |
-| libc | 0.2.191 | MIT OR Apache-2.0 | glissando | https://github.com/rust-lang/libc |
+| libc | 0.2.191 | MIT OR Apache-2.0 | glissando, glissando-voice | https://github.com/rust-lang/libc |
 | linux-raw-sys | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | glissando | https://github.com/sunfishcode/linux-raw-sys |
 | memchr | 2.8.3 | Unlicense OR MIT | glissando | https://github.com/BurntSushi/memchr |
 | memmap2 | 0.9.12 | MIT OR Apache-2.0 | glissando | https://github.com/RazrFalcon/memmap2-rs |

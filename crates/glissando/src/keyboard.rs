@@ -71,6 +71,8 @@ pub enum Action {
     Haptic(Haptic),
     Hide,
     OpenSettings,
+    /// Delete the learned words of every language, not only the enabled ones.
+    DeleteUserFiles,
     /// The desired surface height changed.
     Resize,
     /// Persist a configuration change made from the keyboard itself.
@@ -230,7 +232,8 @@ impl Keyboard {
         let c = &self.config;
         let t = &mut self.touch.config;
         t.long_press_ms = c.long_press_ms;
-        t.swipe_enabled = c.glide;
+        // Glide candidates would show the typed word in the suggestion strip.
+        t.swipe_enabled = c.glide && !self.field.private();
         t.space_cursor = c.glide_cursor;
         t.delete_glide = c.glide_delete;
         t.trackpad_on_space_long_press = c.trackpad_long_press_space;
@@ -465,6 +468,7 @@ impl Keyboard {
         self.im_active = true;
         self.field = field;
         self.engine.set_field(field);
+        self.apply_config_to_touch();
         self.panel = None;
         self.emoji_search = None;
         self.layer = self.default_layer();
@@ -495,6 +499,7 @@ impl Keyboard {
         self.im_active = false;
         self.field = FieldInfo { purpose: Purpose::Terminal, no_completion: true, ..Default::default() };
         self.engine.set_field(self.field);
+        self.apply_config_to_touch();
         self.mods = Mods::default();
         self.layer = self.default_layer();
         self.rebuild();
@@ -1099,6 +1104,7 @@ impl Keyboard {
             }
             PanelHit::ClearPersonalData => {
                 self.engine.clear_user_data();
+                self.actions.push(Action::DeleteUserFiles);
                 self.strip_message = Some(("✓".into(), false));
             }
             PanelHit::Redraw => {}
@@ -1621,6 +1627,20 @@ mod tests {
         kb.set_config(newer, Vec::new());
 
         assert_eq!(kb.panel.as_ref().unwrap().config.user_data_epoch, 4);
+    }
+
+    #[test]
+    fn glide_is_off_in_private_fields() {
+        let mut kb = test_keyboard(&["en"]);
+        assert!(kb.touch.config.swipe_enabled);
+
+        kb.activate(FieldInfo { purpose: Purpose::Password, ..Default::default() });
+        assert!(!kb.touch.config.swipe_enabled);
+        kb.activate(FieldInfo { sensitive: true, ..Default::default() });
+        assert!(!kb.touch.config.swipe_enabled);
+
+        kb.activate(FieldInfo::default());
+        assert!(kb.touch.config.swipe_enabled);
     }
 
     pub fn test_keyboard(layouts: &[&str]) -> Keyboard {
