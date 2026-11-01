@@ -17,9 +17,12 @@ const APP_ID: &str = "io.github.x_vlad_x.Glissando.Settings";
 
 type State = Rc<RefCell<Config>>;
 
-fn save(state: &State) {
-    if let Err(e) = state.borrow().save() {
-        eprintln!("glissando-settings: cannot save {}: {e}", Config::path().display());
+/// Apply one change to the file, not to our copy: the keyboard writes the file
+/// too, and saving the copy would undo what it changed since we loaded it.
+fn edit(state: &State, change: impl FnOnce(&mut Config)) {
+    match Config::update(change) {
+        Ok(c) => *state.borrow_mut() = c,
+        Err(e) => eprintln!("glissando-settings: cannot save {}: {e}", Config::path().display()),
     }
 }
 
@@ -39,8 +42,7 @@ fn switch(
     row.set_active(get(&state.borrow()));
     let st = state.clone();
     row.connect_active_notify(move |r| {
-        set(&mut st.borrow_mut(), r.is_active());
-        save(&st);
+        edit(&st, |c| set(c, r.is_active()));
     });
     row
 }
@@ -61,8 +63,7 @@ fn spin(
     row.set_title(title);
     let st = state.clone();
     row.connect_value_notify(move |r| {
-        set(&mut st.borrow_mut(), r.value());
-        save(&st);
+        edit(&st, |c| set(c, r.value()));
     });
     row
 }
@@ -80,8 +81,7 @@ fn combo(
     row.set_selected(get(&state.borrow()));
     let st = state.clone();
     row.connect_selected_notify(move |r| {
-        set(&mut st.borrow_mut(), r.selected());
-        save(&st);
+        edit(&st, |c| set(c, r.selected()));
     });
     row
 }
@@ -170,33 +170,33 @@ fn languages_page(nav: &adw::NavigationView, state: &State) -> adw::NavigationPa
         let st = state.clone();
         let idc = id.clone();
         up.connect_clicked(move |_| {
-            let mut c = st.borrow_mut();
-            if let Some(i) = c.layouts.iter().position(|l| *l == idc)
-                && i > 0
-            {
-                c.layouts.swap(i, i - 1);
-            }
-            drop(c);
-            save(&st);
+            edit(&st, |c| {
+                if let Some(i) = c.layouts.iter().position(|l| *l == idc)
+                    && i > 0
+                {
+                    c.layouts.swap(i, i - 1);
+                }
+            });
         });
         let st = state.clone();
         let idc = id.clone();
         row.connect_active_notify(move |r| {
-            let mut c = st.borrow_mut();
-            if r.is_active() {
-                if !c.layouts.contains(&idc) {
-                    c.layouts.push(idc.clone());
+            let mut last_layout = false;
+            edit(&st, |c| {
+                if r.is_active() {
+                    if !c.layouts.contains(&idc) {
+                        c.layouts.push(idc.clone());
+                    }
+                } else if c.layouts.len() > 1 {
+                    c.layouts.retain(|l| *l != idc);
+                } else {
+                    last_layout = true;
                 }
-            } else if c.layouts.len() > 1 {
-                c.layouts.retain(|l| *l != idc);
-            } else {
-                // At least one layout stays enabled.
-                drop(c);
+            });
+            // At least one layout stays enabled.
+            if last_layout {
                 r.set_active(true);
-                return;
             }
-            drop(c);
-            save(&st);
         });
         g.add(&row);
         rows.borrow_mut().push((id.clone(), row));
@@ -375,8 +375,7 @@ fn theme_page(nav: &adw::NavigationView, state: &State) -> adw::NavigationPage {
     font.set_show_apply_button(true);
     let st = state.clone();
     font.connect_apply(move |e| {
-        st.borrow_mut().font = e.text().to_string();
-        save(&st);
+        edit(&st, |c| c.font = e.text().to_string());
     });
     g.add(&font);
     page(nav, tr("Theme"), &[g])
@@ -545,11 +544,14 @@ fn stevia_ignored_apps() -> Vec<String> {
 
 fn add_blocked_app(state: &State, id: &str) {
     let id = id.trim();
-    if id.is_empty() || state.borrow().auto_show_blocked(id) {
+    if id.is_empty() {
         return;
     }
-    state.borrow_mut().no_auto_show.push(id.to_string());
-    save(state);
+    edit(state, |c| {
+        if !c.auto_show_blocked(id) {
+            c.no_auto_show.push(id.to_string());
+        }
+    });
 }
 
 fn fill_blocked_list(list: &adw::PreferencesGroup, rows: &Rc<RefCell<Vec<adw::ActionRow>>>, state: &State) {
@@ -565,8 +567,7 @@ fn fill_blocked_list(list: &adw::PreferencesGroup, rows: &Rc<RefCell<Vec<adw::Ac
         del.set_tooltip_text(Some(tr("Remove")));
         let (st, l, rs) = (state.clone(), list.clone(), rows.clone());
         del.connect_clicked(move |_| {
-            st.borrow_mut().no_auto_show.retain(|a| *a != id);
-            save(&st);
+            edit(&st, |c| c.no_auto_show.retain(|a| *a != id));
             fill_blocked_list(&l, &rs, &st);
         });
         row.add_suffix(&del);
@@ -674,8 +675,7 @@ fn apps_page(nav: &adw::NavigationView, state: &State) -> adw::NavigationPage {
 }
 
 fn bump_dict_epoch(state: &State) {
-    state.borrow_mut().user_dict_epoch += 1;
-    save(state);
+    edit(state, |c| c.user_dict_epoch += 1);
 }
 
 fn dictionary_group(state: &State, code: &str) -> adw::PreferencesGroup {
@@ -772,8 +772,7 @@ fn privacy_page(nav: &adw::NavigationView, state: &State, window: &adw::Applicat
                 let _ = std::fs::remove_dir_all(data_dir().join("user"));
                 let _ = std::fs::remove_file(state_dir().join("recent-emoji"));
                 let _ = std::fs::remove_file(state_dir().join("pinned-clips"));
-                st2.borrow_mut().user_data_epoch += 1;
-                save(&st2);
+                edit(&st2, |c| c.user_data_epoch += 1);
             }
         });
         d.present(Some(&win));

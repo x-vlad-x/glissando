@@ -208,8 +208,11 @@ impl Config {
     }
 
     pub fn load() -> Config {
-        let p = Config::path();
-        match std::fs::read_to_string(&p) {
+        Config::load_from(&Config::path())
+    }
+
+    fn load_from(p: &Path) -> Config {
+        match std::fs::read_to_string(p) {
             Ok(s) => match toml::from_str::<Config>(&s) {
                 Ok(c) => c.sanitized(),
                 Err(e) => {
@@ -222,7 +225,10 @@ impl Config {
     }
 
     pub fn save(&self) -> std::io::Result<()> {
-        let p = Config::path();
+        self.save_to(&Config::path())
+    }
+
+    fn save_to(&self, p: &Path) -> std::io::Result<()> {
         if let Some(d) = p.parent() {
             std::fs::create_dir_all(d)?;
         }
@@ -230,6 +236,23 @@ impl Config {
         let tmp = p.with_extension("tmp");
         std::fs::write(&tmp, s)?;
         std::fs::rename(tmp, p)
+    }
+
+    /// Change the settings as they are in the file now and return the result.
+    /// A copy loaded earlier may be out of date: the keyboard saves its quick
+    /// menu changes while the settings app is open.
+    pub fn update(change: impl FnOnce(&mut Config)) -> std::io::Result<Config> {
+        Config::update_file(&Config::path(), change)
+    }
+
+    fn update_file(path: &Path, change: impl FnOnce(&mut Config)) -> std::io::Result<Config> {
+        let before = Config::load_from(path);
+        let mut after = before.clone();
+        change(&mut after);
+        if after != before {
+            after.save_to(path)?;
+        }
+        Ok(after)
     }
 
     pub fn sanitized(mut self) -> Config {
@@ -319,6 +342,49 @@ mod tests {
         assert!(write_private(&path, b"new").is_err());
 
         assert_eq!(std::fs::read(&path).unwrap(), b"old");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_keeps_changes_made_by_the_other_process() {
+        let dir = scratch_dir("update");
+        let path = dir.join("config.toml");
+        // The settings app has the file open with these values...
+        Config::default().save_to(&path).unwrap();
+        // ...when the keyboard's quick menu changes two others.
+        let keyboard = Config { theme: ThemeMode::Dark, number_row: true, ..Config::load_from(&path) };
+        keyboard.save_to(&path).unwrap();
+
+        let c = Config::update_file(&path, |c| c.haptics = false).unwrap();
+
+        let on_disk = Config::load_from(&path);
+        assert_eq!(on_disk, c);
+        assert_eq!(on_disk.theme, ThemeMode::Dark);
+        assert!(on_disk.number_row);
+        assert!(!on_disk.haptics);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_counts_from_the_value_on_disk() {
+        let dir = scratch_dir("epoch");
+        let path = dir.join("config.toml");
+        Config { user_dict_epoch: 7, ..Config::default() }.save_to(&path).unwrap();
+
+        let c = Config::update_file(&path, |c| c.user_dict_epoch += 1).unwrap();
+
+        assert_eq!(c.user_dict_epoch, 8);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_without_a_change_does_not_write() {
+        let dir = scratch_dir("noop");
+        let path = dir.join("config.toml");
+
+        Config::update_file(&path, |_| {}).unwrap();
+
+        assert!(!path.exists());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
