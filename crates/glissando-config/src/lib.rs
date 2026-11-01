@@ -7,7 +7,8 @@
 //! when it changes.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -163,6 +164,37 @@ pub fn find_resource(rel: &str) -> Option<PathBuf> {
     resource_dirs().into_iter().map(|d| d.join(rel)).find(|p| p.exists())
 }
 
+/// Replace the personal data file `path` with `contents`. The bytes go to a
+/// temporary file next to it, readable only by the user, which is then renamed
+/// over `path`: a crash leaves either the old or the new file, never a partial
+/// one. A file with wider permissions from an earlier version is replaced too.
+pub fn write_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    // A leftover from a crash would keep its permissions if opened again.
+    match std::fs::remove_file(&tmp) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let written = opts.open(&tmp).and_then(|mut f| {
+        f.write_all(contents)?;
+        f.sync_all()
+    });
+    let result = written.and_then(|()| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
 impl Config {
     /// Should the keyboard stay closed on focus in this app?
     pub fn auto_show_blocked(&self, app_id: &str) -> bool {
@@ -239,5 +271,54 @@ mod tests {
         assert!(c.auto_show_blocked("pix"));
         assert!(!c.auto_show_blocked("org.gnome.Console"));
         assert!(!c.auto_show_blocked(""));
+    }
+
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("glissando-config-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_private_ignores_a_stale_temporary_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = scratch_dir("stale");
+        let path = dir.join("sub").join("data");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let tmp = path.with_file_name("data.tmp");
+        std::fs::write(&tmp, "leftover from a crash").unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        write_private(&path, b"new").unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        assert!(!tmp.exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn write_private_creates_missing_directories() {
+        let dir = scratch_dir("mkdir");
+        let path = dir.join("a").join("b").join("data");
+        write_private(&path, b"x").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"x");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn failed_write_keeps_the_old_file() {
+        let dir = scratch_dir("fail");
+        let path = dir.join("data");
+        std::fs::write(&path, "old").unwrap();
+        // A directory in the way of the temporary file makes the write fail.
+        std::fs::create_dir(dir.join("data.tmp")).unwrap();
+
+        assert!(write_private(&path, b"new").is_err());
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"old");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

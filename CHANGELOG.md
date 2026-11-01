@@ -7,6 +7,8 @@
   `sm.puri.OSK0.desktop` failed with "Oh no! Something has gone wrong".
   Thanks to [@VipinVIP](https://github.com/VipinVIP) for tracking this down
   on a system without systemd and proposing the fix (#1)
+- Recent emoji and pinned clipboard items are written atomically and readable
+  only by you, so a crash during a write can no longer lose them (#6)
 
 ## 0.3.0 – third preview
 
