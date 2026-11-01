@@ -135,6 +135,8 @@ pub struct App {
     osk: Option<Rc<OskService>>,
     haptics: Haptics,
     auto_show: bool,
+    /// Keeps the desktop settings being followed alive.
+    _desktop_settings: Vec<gio::Settings>,
     dump_geometry: Option<std::path::PathBuf>,
     last_geometry: String,
     save_timer: Option<glib::SourceId>,
@@ -160,6 +162,10 @@ pub fn voice_available() -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+fn auto_show_wanted() -> bool {
+    std::env::var_os("GLISSANDO_AUTOSHOW").is_some() || dbus::osk_enabled()
 }
 
 pub struct Options {
@@ -212,6 +218,15 @@ impl App {
     /// opens only on request (e.g. a calculator with its own keypad).
     fn app_blocked(&self) -> bool {
         self.active_app.as_deref().map(|a| self.kb.config.auto_show_blocked(a)).unwrap_or(false)
+    }
+
+    /// `screen-keyboard-enabled` changed. It only governs showing on focus: an
+    /// explicit `SetVisible` from Phosh's home bar still works, as at startup.
+    fn osk_enabled_changed(&mut self) {
+        self.auto_show = auto_show_wanted();
+        dlog!("auto show {}", self.auto_show);
+        self.update_visibility();
+        self.flush();
     }
 
     fn toplevels_changed(&mut self) {
@@ -1057,7 +1072,8 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         forced_visible: opts.show,
         osk: None,
         haptics,
-        auto_show: std::env::var_os("GLISSANDO_AUTOSHOW").is_some() || dbus::osk_enabled(),
+        auto_show: auto_show_wanted(),
+        _desktop_settings: Vec::new(),
         dump_geometry: opts.dump_geometry.clone(),
         last_geometry: String::new(),
         save_timer: None,
@@ -1099,6 +1115,17 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
             },
         );
         app.borrow_mut().osk = Some(osk);
+    }
+    {
+        let w = Rc::downgrade(&app);
+        let watched = dbus::watch_osk_enabled(move || {
+            if let Some(a) = w.upgrade()
+                && let Ok(mut a) = a.try_borrow_mut()
+            {
+                a.osk_enabled_changed();
+            }
+        });
+        app.borrow_mut()._desktop_settings.extend(watched);
     }
     {
         let mut a = app.borrow_mut();

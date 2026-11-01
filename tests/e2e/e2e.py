@@ -18,9 +18,26 @@ if LANDSCAPE:
     OUT_W, OUT_H = 780, 360
 
 
+DESKTOP_SCHEMAS = """<schemalist>
+  <enum id="e2e.ColorScheme">
+    <value nick="default" value="0"/>
+    <value nick="prefer-dark" value="1"/>
+    <value nick="prefer-light" value="2"/>
+  </enum>
+  <schema id="org.gnome.desktop.interface" path="/org/gnome/desktop/interface/">
+    <key name="color-scheme" enum="e2e.ColorScheme"><default>'default'</default></key>
+  </schema>
+  <schema id="org.gnome.desktop.a11y.applications" path="/org/gnome/desktop/a11y/applications/">
+    <key name="screen-keyboard-enabled" type="b"><default>true</default></key>
+  </schema>
+</schemalist>
+"""
+A11Y = "org.gnome.desktop.a11y.applications"
+
+
 class Session:
     def __init__(self, args, purpose=None, hint=None, config=None, kb_args=(), toolkit=None, app_id=None,
-                 text=None, dbus=False, expect_keyboard=True):
+                 text=None, dbus=False, expect_keyboard=True, desktop_settings=False):
         self.args = args
         self.tmp = tempfile.mkdtemp(prefix="glissando-e2e-")
         self.env = dict(os.environ)
@@ -41,6 +58,8 @@ class Session:
             "GLISSANDO_TK_EXTENT": f"{OUT_W}x{OUT_H}",
         })
         voice_setup(self.env)
+        if desktop_settings:
+            self.use_desktop_settings()
         if config:
             os.makedirs(self.env["XDG_CONFIG_HOME"] + "/glissando", exist_ok=True)
             with open(self.env["XDG_CONFIG_HOME"] + "/glissando/config.toml", "w") as f:
@@ -92,6 +111,21 @@ class Session:
             return
         self.wait(lambda: os.path.exists(self.geom_file) and self.surface_height() > 0, "keyboard surface")
         time.sleep(0.3)
+
+    def use_desktop_settings(self):
+        """Desktop settings the test can change, without dconf or the
+        schemas of the developer's system. Follows them instead of forcing
+        the keyboard on."""
+        schemas = os.path.join(self.tmp, "schemas")
+        os.mkdir(schemas)
+        with open(os.path.join(schemas, "e2e.gschema.xml"), "w") as f:
+            f.write(DESKTOP_SCHEMAS)
+        subprocess.run(["glib-compile-schemas", schemas], check=True)
+        del self.env["GLISSANDO_AUTOSHOW"]
+        self.env.update({"GSETTINGS_SCHEMA_DIR": schemas, "GSETTINGS_BACKEND": "keyfile", "GIO_USE_VFS": "local"})
+
+    def gsettings(self, schema, key, value):
+        subprocess.run(["gsettings", "set", schema, key, value], env=self.env, check=True, timeout=5)
 
     def spawn(self, name, cmd, extra_env=None):
         env = dict(self.env)
@@ -344,6 +378,15 @@ def run_home_bar_toggle(args):
 
 
 @test
+def follows_screen_keyboard_enabled(s):
+    s.gsettings(A11Y, "screen-keyboard-enabled", "false")
+    s.wait(lambda: not shown(s), "hidden while disabled")
+    s.gsettings(A11Y, "screen-keyboard-enabled", "true")
+    s.wait(lambda: shown(s), "shown again once enabled")
+follows_screen_keyboard_enabled.desktop_settings = True
+
+
+@test
 def glide_typing(s):
     pts = []
     for ch in "hello":
@@ -536,7 +579,8 @@ def main():
                 run_home_bar_toggle(args)
             else:
                 s = Session(args, config=getattr(t, "config", None), toolkit=getattr(t, "toolkit", None),
-                            purpose=getattr(t, "purpose", None), text=getattr(t, "text", None))
+                            purpose=getattr(t, "purpose", None), text=getattr(t, "text", None),
+                            desktop_settings=getattr(t, "desktop_settings", False))
                 try:
                     t(s)
                 finally:

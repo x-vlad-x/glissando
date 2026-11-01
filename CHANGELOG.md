@@ -7,6 +7,8 @@
   `sm.puri.OSK0.desktop` failed with "Oh no! Something has gone wrong".
   Thanks to [@VipinVIP](https://github.com/VipinVIP) for tracking this down
   on a system without systemd and proposing the fix (#1)
+- Turning the screen keyboard off or on in the system settings applies at
+  once instead of at the next login (#4)
 - The settings app no longer overwrites changes made from the keyboard's
   quick menu while it is open (#3)
 - Recent emoji and pinned clipboard items are written atomically and readable
