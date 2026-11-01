@@ -33,11 +33,11 @@ impl ClipboardHistory {
         self.enabled = enabled;
         self.retention = Duration::from_secs(hours as u64 * 3600);
         if self.pinned_path.is_none() {
-            if let Some(p) = &pinned_path {
-                if let Ok(s) = std::fs::read_to_string(p) {
-                    for t in s.split('\u{1e}').filter(|t| !t.is_empty()) {
-                        self.clips.push(Clip { text: t.to_string(), pinned: true, added: None });
-                    }
+            if let Some(p) = &pinned_path
+                && let Ok(s) = std::fs::read_to_string(p)
+            {
+                for t in s.split('\u{1e}').filter(|t| !t.is_empty()) {
+                    self.clips.push(Clip { text: t.to_string(), pinned: true, added: None });
                 }
             }
             self.pinned_path = pinned_path;

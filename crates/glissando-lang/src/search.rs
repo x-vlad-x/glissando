@@ -128,10 +128,10 @@ pub fn search(dict: &Dict, input: &[InChar], opts: &SearchOpts) -> Vec<Match> {
             continue;
         }
         let key = (id, i as u16);
-        if let Some(&prev) = seen.get(&key) {
-            if prev <= cost {
-                continue;
-            }
+        if let Some(&prev) = seen.get(&key)
+            && prev <= cost
+        {
+            continue;
         }
         seen.insert(key, cost);
         let node = dict.node(id);
@@ -166,12 +166,12 @@ pub fn search(dict: &Dict, input: &[InChar], opts: &SearchOpts) -> Vec<Match> {
                     stack.push((cid, i + 1, cost + c.substitute));
                 }
                 // Transposition: child matches input[i+1] and grandchild matches input[i].
-                if i + 1 < n {
-                    if let Some(m1) = match_cost(&input[i + 1], child.ch, c) {
-                        for (gid, g) in dict.children(&child) {
-                            if let Some(m0) = match_cost(&input[i], g.ch, c) {
-                                stack.push((gid, i + 2, cost + c.transpose + m0 + m1));
-                            }
+                if i + 1 < n
+                    && let Some(m1) = match_cost(&input[i + 1], child.ch, c)
+                {
+                    for (gid, g) in dict.children(&child) {
+                        if let Some(m0) = match_cost(&input[i], g.ch, c) {
+                            stack.push((gid, i + 2, cost + c.transpose + m0 + m1));
                         }
                     }
                 }

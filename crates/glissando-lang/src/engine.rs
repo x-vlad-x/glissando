@@ -502,20 +502,18 @@ impl Engine {
         if self.composing.is_empty() {
             if self.settings.next_word && !self.before.is_empty() && !self.before.ends_with('\n') {
                 let ends_ws = self.before.ends_with(char::is_whitespace);
-                if ends_ws {
-                    if let Some(prev) = self.prev_word() {
-                        let ranker = Ranker { langs: &self.langs, active: &self.ranker_active() };
-                        let cap = self.autocap();
-                        self.suggestions = ranker
-                            .predictions(&prev, 3)
-                            .into_iter()
-                            .map(|c| Suggestion {
-                                text: if cap { apply_case(&c.text, CasePattern::Capitalized) } else { c.text },
-                                kind: SuggestionKind::Prediction,
-                                autocorrect: false,
-                            })
-                            .collect();
-                    }
+                if ends_ws && let Some(prev) = self.prev_word() {
+                    let ranker = Ranker { langs: &self.langs, active: &self.ranker_active() };
+                    let cap = self.autocap();
+                    self.suggestions = ranker
+                        .predictions(&prev, 3)
+                        .into_iter()
+                        .map(|c| Suggestion {
+                            text: if cap { apply_case(&c.text, CasePattern::Capitalized) } else { c.text },
+                            kind: SuggestionKind::Prediction,
+                            autocorrect: false,
+                        })
+                        .collect();
                 }
             }
             return;
@@ -557,12 +555,13 @@ impl Engine {
         }
         // Display order: the strongest candidate first. If the verbatim
         // word is unknown and something else ranks higher, show that first.
-        if auto.is_none() && !typed_known && list.len() > 1 {
-            if let Some(b) = best {
-                if b.kind != CandKind::Exact {
-                    list.swap(0, 1);
-                }
-            }
+        if auto.is_none()
+            && !typed_known
+            && list.len() > 1
+            && let Some(b) = best
+            && b.kind != CandKind::Exact
+        {
+            list.swap(0, 1);
         }
         self.suggestions = list;
     }
@@ -602,10 +601,8 @@ impl Engine {
         let typed = std::mem::take(&mut self.composing);
         self.inputs.clear();
         let mut out = typed.clone();
-        if correct {
-            if let Some(s) = self.suggestions.iter().find(|s| s.autocorrect) {
-                out = s.text.clone();
-            }
+        if correct && let Some(s) = self.suggestions.iter().find(|s| s.autocorrect) {
+            out = s.text.clone();
         }
         if self.use_preedit() {
             self.commit(&out, ops);
@@ -648,13 +645,11 @@ impl Engine {
             _ => None,
         };
         let wordish = single.map(|c| is_word_char(c) && c != '-').unwrap_or(false);
-        if self.kind == Composing::Swipe && !self.composing.is_empty() {
-            if wordish {
-                // Typing right after a glide starts a new word.
-                self.finish_word(false, &mut ops);
-                self.commit(" ", &mut ops);
-                self.auto_space = false;
-            }
+        if self.kind == Composing::Swipe && !self.composing.is_empty() && wordish {
+            // Typing right after a glide starts a new word.
+            self.finish_word(false, &mut ops);
+            self.commit(" ", &mut ops);
+            self.auto_space = false;
         }
         if self.selection && self.composing.is_empty() {
             // The client replaces the selection with whatever we send.
@@ -770,18 +765,19 @@ impl Engine {
             }
             return self.finish_batch(ops);
         }
-        if let Some(u) = self.undo.take() {
-            if self.before.ends_with(&u.inserted) && self.context_ok() {
-                // Revert the auto-correction and keep the original word.
-                let n = u.inserted.chars().count();
-                self.delete_before(n, &mut ops);
-                for &i in &self.active.clone() {
-                    self.langs[i].user.insist(&u.original);
-                }
-                let _ = u.lang;
-                self.recompose(&u.original, &mut ops);
-                return self.finish_batch(ops);
+        if let Some(u) = self.undo.take()
+            && self.before.ends_with(&u.inserted)
+            && self.context_ok()
+        {
+            // Revert the auto-correction and keep the original word.
+            let n = u.inserted.chars().count();
+            self.delete_before(n, &mut ops);
+            for &i in &self.active.clone() {
+                self.langs[i].user.insist(&u.original);
             }
+            let _ = u.lang;
+            self.recompose(&u.original, &mut ops);
+            return self.finish_batch(ops);
         }
         if self.auto_space && self.before.ends_with(' ') {
             self.auto_space = false;

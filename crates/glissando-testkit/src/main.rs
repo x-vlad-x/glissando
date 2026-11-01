@@ -204,10 +204,10 @@ impl Client {
 
     fn external_change(&mut self) {
         // Cursor moves are external changes for the input method.
-        if let Some(ti) = &self.ti {
-            if self.send_cause {
-                ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::Other);
-            }
+        if let Some(ti) = &self.ti
+            && self.send_cause
+        {
+            ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::Other);
         }
         self.send_state();
     }
@@ -324,10 +324,10 @@ fn parse_keymap(text: &str) -> HashMap<u32, char> {
         if let Some(rest) = l.strip_prefix("key <I") {
             let code: Option<u32> = rest.split('>').next().and_then(|n| n.parse().ok());
             let sym = rest.split('[').nth(1).and_then(|s| s.split(']').next()).map(|s| s.trim());
-            if let (Some(code), Some(sym)) = (code, sym) {
-                if let Some(ch) = keysym_char(sym) {
-                    m.insert(code - 8, ch);
-                }
+            if let (Some(code), Some(sym)) = (code, sym)
+                && let Some(ch) = keysym_char(sym)
+            {
+                m.insert(code - 8, ch);
             }
         }
     }
@@ -406,10 +406,10 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for Client {
                     c.pending.commit.as_ref().map(|s| s.len())
                 );
                 c.serial = serial;
-                if let Some(ti) = &c.ti {
-                    if c.send_cause {
-                        ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::InputMethod);
-                    }
+                if let Some(ti) = &c.ti
+                    && c.send_cause
+                {
+                    ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::InputMethod);
                 }
                 c.apply_done();
             }
@@ -553,11 +553,11 @@ impl Dispatch<wl_output::WlOutput, ()> for Ptr {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_output::Event::Mode { width, height, .. } = e {
-            if let Some(x) = p.outputs.iter_mut().find(|x| &x.0 == o) {
-                x.1 = width;
-                x.2 = height;
-            }
+        if let wl_output::Event::Mode { width, height, .. } = e
+            && let Some(x) = p.outputs.iter_mut().find(|x| &x.0 == o)
+        {
+            x.1 = width;
+            x.2 = height;
         }
     }
 }

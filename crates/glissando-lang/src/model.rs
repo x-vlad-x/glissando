@@ -36,12 +36,11 @@ impl Language {
     fn context_bonus(&self, prev: Option<&str>, word: &str) -> f32 {
         let Some(prev) = prev else { return 0.0 };
         let mut bonus = 0.0;
-        if let Some(d) = &self.dict {
-            if let (Some((p, _)), Some((w, _))) = (d.lookup_any_case(prev), d.lookup(word)) {
-                if let Some(f) = d.bigram(p, w) {
-                    bonus += 0.6 + f as f32 / 255.0 * 2.4;
-                }
-            }
+        if let Some(d) = &self.dict
+            && let (Some((p, _)), Some((w, _))) = (d.lookup_any_case(prev), d.lookup(word))
+            && let Some(f) = d.bigram(p, w)
+        {
+            bonus += 0.6 + f as f32 / 255.0 * 2.4;
         }
         let c = self.user.bigram(prev, word);
         if c > 0 {
@@ -116,6 +115,7 @@ pub fn fuzzy_cost(input: &[InChar], word: &str, allow_prefix: bool) -> Option<(f
     }
     let mut best = (dp[n][m], 0usize);
     if allow_prefix && n > 0 {
+        #[allow(clippy::needless_range_loop)] // `j` is also the cost of the rest of the word
         for j in n.saturating_sub(1)..m {
             let c = dp[n][j] + costs.complete + costs.complete_per_char * (m - j) as f32;
             if c < best.0 {
@@ -187,16 +187,16 @@ impl Ranker<'_> {
         let mut out = Vec::new();
         for &(li, prior) in self.active {
             let lang = &self.langs[li];
-            if let Some(d) = &lang.dict {
-                if let Some((p, _)) = d.lookup_any_case(prev) {
-                    for (n, f) in d.successors(p).into_iter().take(12) {
-                        let w = d.word(n);
-                        if lang.user.is_blocked(&w) {
-                            continue;
-                        }
-                        let score = f as f32 / 255.0 * 3.0 + logf(d.node(n).freq) * 0.3 + lang.user.boost(&w) + prior;
-                        out.push(Candidate { text: w, score, lang: li, kind: CandKind::Prediction, cost: 0.0 });
+            if let Some(d) = &lang.dict
+                && let Some((p, _)) = d.lookup_any_case(prev)
+            {
+                for (n, f) in d.successors(p).into_iter().take(12) {
+                    let w = d.word(n);
+                    if lang.user.is_blocked(&w) {
+                        continue;
                     }
+                    let score = f as f32 / 255.0 * 3.0 + logf(d.node(n).freq) * 0.3 + lang.user.boost(&w) + prior;
+                    out.push(Candidate { text: w, score, lang: li, kind: CandKind::Prediction, cost: 0.0 });
                 }
             }
             for (w, c) in lang.user.successors(prev).into_iter().take(12) {

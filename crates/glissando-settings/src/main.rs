@@ -45,6 +45,7 @@ fn switch(
     row
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spin(
     state: &State,
     title: &str,
@@ -170,10 +171,10 @@ fn languages_page(nav: &adw::NavigationView, state: &State) -> adw::NavigationPa
         let idc = id.clone();
         up.connect_clicked(move |_| {
             let mut c = st.borrow_mut();
-            if let Some(i) = c.layouts.iter().position(|l| *l == idc) {
-                if i > 0 {
-                    c.layouts.swap(i, i - 1);
-                }
+            if let Some(i) = c.layouts.iter().position(|l| *l == idc)
+                && i > 0
+            {
+                c.layouts.swap(i, i - 1);
             }
             drop(c);
             save(&st);
@@ -780,14 +781,14 @@ fn privacy_page(nav: &adw::NavigationView, state: &State, window: &adw::Applicat
     let mut groups = vec![info];
     let mut codes: Vec<String> = Vec::new();
     for id in state.borrow().layouts.iter() {
-        if let Some(p) = find_resource(&format!("layouts/{id}.toml")) {
-            if let Ok(t) = std::fs::read_to_string(p).unwrap_or_default().parse::<toml::Table>() {
-                for l in t.get("languages").and_then(|v| v.as_array()).cloned().unwrap_or_default() {
-                    if let Some(s) = l.as_str() {
-                        if !codes.iter().any(|c| c == s) {
-                            codes.push(s.to_string());
-                        }
-                    }
+        if let Some(p) = find_resource(&format!("layouts/{id}.toml"))
+            && let Ok(t) = std::fs::read_to_string(p).unwrap_or_default().parse::<toml::Table>()
+        {
+            for l in t.get("languages").and_then(|v| v.as_array()).cloned().unwrap_or_default() {
+                if let Some(s) = l.as_str()
+                    && !codes.iter().any(|c| c == s)
+                {
+                    codes.push(s.to_string());
                 }
             }
         }

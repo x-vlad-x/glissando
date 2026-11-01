@@ -125,8 +125,7 @@ impl EmojiDb {
             return Vec::new();
         }
         // Ranked like search, but only emoji with the word as a keyword.
-        let mut v: Vec<&Emoji> =
-            self.search(&w, 40).into_iter().filter(|e| e.keywords.iter().any(|k| *k == w)).collect();
+        let mut v: Vec<&Emoji> = self.search(&w, 40).into_iter().filter(|e| e.keywords.contains(&w)).collect();
         v.truncate(max);
         v
     }

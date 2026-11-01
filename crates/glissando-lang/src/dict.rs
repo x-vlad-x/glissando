@@ -155,20 +155,18 @@ impl Dict {
     pub fn lookup_any_case(&self, word: &str) -> Option<(u32, u8)> {
         let mut best = self.lookup(word);
         let lower = word.to_lowercase();
-        if lower != word {
-            if let Some(l) = self.lookup(&lower) {
-                if best.map(|b| l.1 > b.1).unwrap_or(true) {
-                    best = Some(l);
-                }
-            }
+        if lower != word
+            && let Some(l) = self.lookup(&lower)
+            && best.map(|b| l.1 > b.1).unwrap_or(true)
+        {
+            best = Some(l);
         }
         let cap = glissando_core::text::capitalize(&lower);
-        if cap != word {
-            if let Some(c) = self.lookup(&cap) {
-                if best.map(|b| c.1 > b.1).unwrap_or(true) {
-                    best = Some(c);
-                }
-            }
+        if cap != word
+            && let Some(c) = self.lookup(&cap)
+            && best.map(|b| c.1 > b.1).unwrap_or(true)
+        {
+            best = Some(c);
         }
         best
     }

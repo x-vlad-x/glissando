@@ -304,13 +304,13 @@ impl App {
 
     fn update_height(&mut self) {
         let h = self.kb.desired_height() as u32;
-        if let Some(s) = &mut self.surface {
-            if s.height != h {
-                s.layer.set_size(0, h);
-                s.layer.set_exclusive_zone(h as i32);
-                s.surface.commit();
-                s.height = h;
-            }
+        if let Some(s) = &mut self.surface
+            && s.height != h
+        {
+            s.layer.set_size(0, h);
+            s.layer.set_exclusive_zone(h as i32);
+            s.surface.commit();
+            s.height = h;
         }
         self.write_geometry();
     }
@@ -449,17 +449,17 @@ impl App {
         }
         let me = self.me.clone();
         self.prewarm = Some(glib::idle_add_local_full(glib::Priority::LOW, move || {
-            if let Some(app) = me.upgrade() {
-                if let Ok(mut app) = app.try_borrow_mut() {
-                    app.prewarm = None;
-                    if app.kb_busy() {
-                        return glib::ControlFlow::Break;
-                    }
-                    let now = app.now();
-                    if let Some(v) = app.kb.alternate_view(now) {
-                        let theme = app.theme.clone();
-                        app.renderer.prewarm(bw, bh, scale, &v, &theme);
-                    }
+            if let Some(app) = me.upgrade()
+                && let Ok(mut app) = app.try_borrow_mut()
+            {
+                app.prewarm = None;
+                if app.kb_busy() {
+                    return glib::ControlFlow::Break;
+                }
+                let now = app.now();
+                if let Some(v) = app.kb.alternate_view(now) {
+                    let theme = app.theme.clone();
+                    app.renderer.prewarm(bw, bh, scale, &v, &theme);
                 }
             }
             glib::ControlFlow::Break
@@ -1074,27 +1074,27 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         let osk = OskService::start(
             opts.replace,
             move |v| {
-                if let Some(a) = w1.upgrade() {
-                    if let Ok(mut a) = a.try_borrow_mut() {
-                        a.set_visible_request(v);
-                    }
+                if let Some(a) = w1.upgrade()
+                    && let Ok(mut a) = a.try_borrow_mut()
+                {
+                    a.set_visible_request(v);
                 }
             },
             move || {
                 eprintln!("glissando: lost sm.puri.OSK0 (replaced by another keyboard or no session bus)");
-                if let Some(a) = w2.upgrade() {
-                    if let Ok(mut a) = a.try_borrow_mut() {
-                        a.quit = true;
-                    }
+                if let Some(a) = w2.upgrade()
+                    && let Ok(mut a) = a.try_borrow_mut()
+                {
+                    a.quit = true;
                 }
             },
             // gnome-session's Stop goes through the same exit as a signal, so
             // the words learned since the last timed save are kept.
             move || {
-                if let Some(a) = w3.upgrade() {
-                    if let Ok(mut a) = a.try_borrow_mut() {
-                        a.quit = true;
-                    }
+                if let Some(a) = w3.upgrade()
+                    && let Ok(mut a) = a.try_borrow_mut()
+                {
+                    a.quit = true;
                 }
             },
         );
@@ -1111,10 +1111,10 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
     {
         let w = Rc::downgrade(&app);
         glib::idle_add_local_full(glib::Priority::LOW, move || {
-            if let Some(a) = w.upgrade() {
-                if let Ok(a) = a.try_borrow() {
-                    a.renderer.warm_fonts();
-                }
+            if let Some(a) = w.upgrade()
+                && let Ok(a) = a.try_borrow()
+            {
+                a.renderer.warm_fonts();
             }
             glib::ControlFlow::Break
         });
@@ -1128,15 +1128,13 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         glib::IOCondition::IN | glib::IOCondition::ERR | glib::IOCondition::HUP,
         move |_, cond| {
             let mut q = queue.borrow_mut();
-            if let Some(guard) = q.prepare_read() {
-                if let Err(e) = guard.read() {
-                    if !matches!(&e, wayland_client::backend::WaylandError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock)
-                    {
-                        eprintln!("glissando: Wayland connection error: {e}");
-                        app2.borrow_mut().quit = true;
-                        return glib::ControlFlow::Break;
-                    }
-                }
+            if let Some(guard) = q.prepare_read()
+                && let Err(e) = guard.read()
+                && !matches!(&e, wayland_client::backend::WaylandError::Io(io) if io.kind() == std::io::ErrorKind::WouldBlock)
+            {
+                eprintln!("glissando: Wayland connection error: {e}");
+                app2.borrow_mut().quit = true;
+                return glib::ControlFlow::Break;
             }
             let mut a = app2.borrow_mut();
             if let Err(e) = q.dispatch_pending(&mut a) {
@@ -1233,10 +1231,10 @@ impl Dispatch<wl_output::WlOutput, ()> for App {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_output::Event::Scale { factor } = e {
-            if let Some(entry) = app.outputs.iter_mut().find(|x| &x.0 == o) {
-                entry.1 = factor;
-            }
+        if let wl_output::Event::Scale { factor } = e
+            && let Some(entry) = app.outputs.iter_mut().find(|x| &x.0 == o)
+        {
+            entry.1 = factor;
         }
     }
 }
@@ -1260,11 +1258,11 @@ impl Dispatch<wl_surface::WlSurface, ()> for App {
             }
             wl_surface::Event::Enter { output } => {
                 let f = app.outputs.iter().find(|x| x.0 == output).map(|x| x.1).unwrap_or(1);
-                if let Some(s) = &mut app.surface {
-                    if f > s.int_scale {
-                        s.int_scale = f;
-                        changed = true;
-                    }
+                if let Some(s) = &mut app.surface
+                    && f > s.int_scale
+                {
+                    s.int_scale = f;
+                    changed = true;
                 }
             }
             _ => {}
@@ -1586,7 +1584,9 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, ()> 
             Event::AppId { app_id } => app.toplevels[i].pending_app_id = Some(app_id),
             Event::State { state } => {
                 let activated = state
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .any(|c| u32::from_ne_bytes([c[0], c[1], c[2], c[3]]) == State::Activated as u32);
                 app.toplevels[i].pending_activated = Some(activated);
             }

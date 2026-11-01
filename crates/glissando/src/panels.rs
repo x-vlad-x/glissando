@@ -365,18 +365,18 @@ impl PanelState {
 
     /// Long press on a clipboard entry toggles its pin.
     pub fn tick(&mut self, now: u32) {
-        if let (Some(at), Some(d)) = (self.long_press_at, &mut self.drag) {
-            if now >= at && !d.moved {
-                d.long_pressed = true;
-                self.long_press_at = None;
-                if self.kind == PanelKind::Clipboard {
-                    if let Some((_, _, CellAction::Clip(text))) =
-                        self.cells.iter().find(|(r, _, _)| r.contains(r.x + 1.0, d.y0 + self.scroll)).cloned()
-                    {
-                        clipboard::HISTORY.with(|h| h.borrow_mut().toggle_pin(&text));
-                        self.build();
-                    }
-                }
+        if let (Some(at), Some(d)) = (self.long_press_at, &mut self.drag)
+            && now >= at
+            && !d.moved
+        {
+            d.long_pressed = true;
+            self.long_press_at = None;
+            if self.kind == PanelKind::Clipboard
+                && let Some((_, _, CellAction::Clip(text))) =
+                    self.cells.iter().find(|(r, _, _)| r.contains(r.x + 1.0, d.y0 + self.scroll)).cloned()
+            {
+                clipboard::HISTORY.with(|h| h.borrow_mut().toggle_pin(&text));
+                self.build();
             }
         }
         if self.flinging {

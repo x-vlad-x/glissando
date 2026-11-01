@@ -76,11 +76,8 @@ impl KeyAction {
             "comma" => KeyAction::Text(",".into()),
             "period" => KeyAction::Text(".".into()),
             _ => {
-                if let Some(layer) = name.strip_prefix("layer=") {
-                    KeyAction::Layer(layer.to_string())
-                } else {
-                    return None;
-                }
+                let layer = name.strip_prefix("layer=")?;
+                KeyAction::Layer(layer.to_string())
             }
         })
     }
@@ -333,15 +330,15 @@ fn parse_token(tok: &str) -> Result<KeyDef, ParseError> {
 
 fn split_width(tok: &str) -> Result<(&str, f32), ParseError> {
     // A trailing `:<number>` is a width; a lone ':' is the colon key.
-    if let Some(pos) = tok.rfind(':') {
-        if pos > 0 {
-            let (name, w) = (&tok[..pos], &tok[pos + 1..]);
-            if w == "*" {
-                return Ok((name, FILL));
-            }
-            if let Ok(w) = w.parse::<f32>() {
-                return Ok((name, w));
-            }
+    if let Some(pos) = tok.rfind(':')
+        && pos > 0
+    {
+        let (name, w) = (&tok[..pos], &tok[pos + 1..]);
+        if w == "*" {
+            return Ok((name, FILL));
+        }
+        if let Ok(w) = w.parse::<f32>() {
+            return Ok((name, w));
         }
     }
     Ok((tok, 1.0))
@@ -374,20 +371,20 @@ fn build_layer(
             let mut hi = 0;
             for k in keys.iter_mut() {
                 if k.action.is_text() {
-                    if let Some(h) = hints.get(hi) {
-                        if *h != "_" {
-                            k.hint = Some(h.to_string());
-                        }
+                    if let Some(h) = hints.get(hi)
+                        && *h != "_"
+                    {
+                        k.hint = Some(h.to_string());
                     }
                     hi += 1;
                 }
             }
         }
         for k in keys.iter_mut() {
-            if let KeyAction::Text(t) = &k.action {
-                if let Some(spec) = alternates.get(t.as_str()) {
-                    k.alternates = split_alternates(spec);
-                }
+            if let KeyAction::Text(t) = &k.action
+                && let Some(spec) = alternates.get(t.as_str())
+            {
+                k.alternates = split_alternates(spec);
             }
         }
         layer.rows.push(RowDef { keys, height: fr.height.unwrap_or(1.0) });
@@ -420,7 +417,7 @@ impl Layout {
             layers.insert(name.clone(), build_layer(fl, &alternates, &symbols.bottom_rows)?);
             // Purpose specific variants (email/url fields) reuse the rows with another bottom row.
             if let Some(bottom) = &fl.bottom {
-                for (tname, _) in symbols.bottom_rows.iter() {
+                for tname in symbols.bottom_rows.keys() {
                     if let Some(variant) = tname.strip_prefix(&format!("{bottom}_")) {
                         let vl = FileLayer {
                             rows: fl

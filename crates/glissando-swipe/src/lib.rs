@@ -237,10 +237,10 @@ pub fn clean_trace(raw: &[(f32, f32)], min_step: f32) -> Vec<Pt> {
             out.push(p);
         }
     }
-    if let (Some(&(x, y)), Some(last)) = (raw.last(), out.last()) {
-        if last.x != x || last.y != y {
-            out.push(Pt { x, y });
-        }
+    if let (Some(&(x, y)), Some(last)) = (raw.last(), out.last())
+        && (last.x != x || last.y != y)
+    {
+        out.push(Pt { x, y });
     }
     out
 }
@@ -346,13 +346,14 @@ fn alignment_cost(letters: &[Pt], path: &[Pt], speed: &[f32], slow_w: f32) -> f3
         let d = letters[0].d(*p);
         prev[i] = d * d + i as f32 * 0.01;
     }
-    for k in 1..l {
+    for (k, letter) in letters.iter().enumerate().skip(1) {
         let mut cur = vec![f32::MAX; n];
         let mut best = f32::MAX;
+        #[allow(clippy::needless_range_loop)] // `i` walks three parallel slices
         for i in 0..n {
             best = best.min(prev[i]);
             if best < f32::MAX {
-                let d = letters[k].d(path[i]);
+                let d = letter.d(path[i]);
                 let sp = if k + 1 < l { slow_w * speed[i] } else { 0.0 };
                 cur[i] = best + d * d + sp;
             }
@@ -364,14 +365,9 @@ fn alignment_cost(letters: &[Pt], path: &[Pt], speed: &[f32], slow_w: f32) -> f3
     tail / l as f32
 }
 
+#[derive(Default)]
 pub struct ShapeDecoder {
     pub params: DecodeParams,
-}
-
-impl Default for ShapeDecoder {
-    fn default() -> Self {
-        ShapeDecoder { params: DecodeParams::default() }
-    }
 }
 
 impl ShapeDecoder {
@@ -418,10 +414,10 @@ impl ShapeDecoder {
         let root = dict.node(0);
         let mut stack: Vec<(u32, u8, Option<usize>, u8)> = Vec::new();
         for (cid, child) in dict.children(&root) {
-            if let Some(p) = keys.pos(child.ch) {
-                if p.d(g.start) <= self.params.end_radius {
-                    stack.push((cid, 0, key_index(p), 1));
-                }
+            if let Some(p) = keys.pos(child.ch)
+                && p.d(g.start) <= self.params.end_radius
+            {
+                stack.push((cid, 0, key_index(p), 1));
             }
         }
         let mut expansions = 0;
@@ -431,12 +427,12 @@ impl ShapeDecoder {
                 break;
             }
             let node = dict.node(id);
-            if node.freq > 0 && depth >= 2 {
-                if let Some(lk) = last {
-                    if key_list[lk].d(g.end) <= self.params.end_radius {
-                        out.push((id, node.freq));
-                    }
-                }
+            if node.freq > 0
+                && depth >= 2
+                && let Some(lk) = last
+                && key_list[lk].d(g.end) <= self.params.end_radius
+            {
+                out.push((id, node.freq));
             }
             if depth >= 24 {
                 continue;
@@ -601,12 +597,11 @@ impl ShapeDecoder {
 fn context_bonus(lang: &Language, prev: Option<&str>, word: &str) -> f32 {
     let Some(prev) = prev else { return 0.0 };
     let mut b = 0.0;
-    if let Some(d) = &lang.dict {
-        if let (Some((p, _)), Some((w, _))) = (d.lookup_any_case(prev), d.lookup(word)) {
-            if let Some(f) = d.bigram(p, w) {
-                b += 0.5 + f as f32 / 255.0 * 2.0;
-            }
-        }
+    if let Some(d) = &lang.dict
+        && let (Some((p, _)), Some((w, _))) = (d.lookup_any_case(prev), d.lookup(word))
+        && let Some(f) = d.bigram(p, w)
+    {
+        b += 0.5 + f as f32 / 255.0 * 2.0;
     }
     let c = lang.user.bigram(prev, word);
     if c > 0 {

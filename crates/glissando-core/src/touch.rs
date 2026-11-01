@@ -435,10 +435,8 @@ impl TouchMachine {
                 }
             }
             Mode::ShiftHeld { used } => {
-                if used {
-                    if let Some(k) = p.key {
-                        out.push(TouchEvent::ShiftChordEnd { key: k });
-                    }
+                if used && let Some(k) = p.key {
+                    out.push(TouchEvent::ShiftChordEnd { key: k });
                 }
             }
             Mode::Repeating { .. } | Mode::Done => {}
@@ -719,8 +717,7 @@ mod tests {
 
     #[test]
     fn slide_to_adjust_on_non_letters() {
-        let mut cfg = TouchConfig::default();
-        cfg.swipe_enabled = false;
+        let cfg = TouchConfig { swipe_enabled: false, ..TouchConfig::default() };
         let mut m = machine(cfg);
         let (x1, y1) = center(&m, 0, 0);
         let (x2, y2) = center(&m, 0, 1);

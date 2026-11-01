@@ -257,10 +257,10 @@ impl Haptics {
                 250,
                 gio::Cancellable::NONE,
                 move |r| {
-                    if let Err(e) = r {
-                        if e.matches(gio::DBusError::UnknownMethod) || e.matches(gio::DBusError::UnknownInterface) {
-                            flag.set(false);
-                        }
+                    if let Err(e) = r
+                        && (e.matches(gio::DBusError::UnknownMethod) || e.matches(gio::DBusError::UnknownInterface))
+                    {
+                        flag.set(false);
                     }
                 },
             );

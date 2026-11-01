@@ -420,7 +420,7 @@ impl Keyboard {
         self.keys = defs.into_iter().map(|def| LiveKey { def }).collect();
         self.geom = geom;
         let unit = self.geom.unit.max(1.0);
-        self.keymap = KeyMap::new(self.letter_centers().into_iter().map(|(c, x, y)| (c, x, y)));
+        self.keymap = KeyMap::new(self.letter_centers());
         let _ = unit;
         self.pressed.clear();
         self.preview = None;
@@ -625,14 +625,14 @@ impl Keyboard {
         if self.search_key(action) {
             return;
         }
-        if self.mods.any() {
-            if let Some(key) = chord_key(action) {
-                let ops = self.engine.commit_composing();
-                self.push_ops(ops);
-                self.actions.push(Action::Chord(key, self.mods));
-                self.set_mods(Mods::default());
-                return;
-            }
+        if self.mods.any()
+            && let Some(key) = chord_key(action)
+        {
+            let ops = self.engine.commit_composing();
+            self.push_ops(ops);
+            self.actions.push(Action::Chord(key, self.mods));
+            self.set_mods(Mods::default());
+            return;
         }
         match action {
             KeyAction::Text(t) => self.type_text(&t.clone(), touch),
@@ -1000,11 +1000,11 @@ impl Keyboard {
             }
             Some(Target::Strip(i)) => {
                 let items = self.strip_items();
-                if self.strip_pressed == Some(i) {
-                    if let Some((_, _, tap)) = items.get(i) {
-                        let tap = tap.clone();
-                        self.strip_tap(tap);
-                    }
+                if self.strip_pressed == Some(i)
+                    && let Some((_, _, tap)) = items.get(i)
+                {
+                    let tap = tap.clone();
+                    self.strip_tap(tap);
                 }
                 self.strip_pressed = None;
             }
@@ -1014,19 +1014,19 @@ impl Keyboard {
                     self.panel_hit(h);
                 }
             }
-            Some(Target::Side(i)) => {
-                if self.side.get(i).map(|r| r.inset(-10.0, -10.0).contains(x, y)).unwrap_or(false) {
-                    if i == 0 {
-                        self.config.one_handed = match self.config.one_handed {
-                            OneHanded::Left => OneHanded::Right,
-                            _ => OneHanded::Left,
-                        };
-                    } else {
-                        self.config.one_handed = OneHanded::Off;
-                    }
-                    self.rebuild();
-                    self.actions.push(Action::SaveConfig);
+            Some(Target::Side(i))
+                if self.side.get(i).map(|r| r.inset(-10.0, -10.0).contains(x, y)).unwrap_or(false) =>
+            {
+                if i == 0 {
+                    self.config.one_handed = match self.config.one_handed {
+                        OneHanded::Left => OneHanded::Right,
+                        _ => OneHanded::Left,
+                    };
+                } else {
+                    self.config.one_handed = OneHanded::Off;
                 }
+                self.rebuild();
+                self.actions.push(Action::SaveConfig);
             }
             _ => {}
         }
@@ -1053,10 +1053,10 @@ impl Keyboard {
 
     pub fn next_deadline(&self) -> Option<u32> {
         let mut d = self.touch.next_deadline();
-        if let Some(p) = &self.panel {
-            if let Some(pd) = p.next_deadline() {
-                d = Some(d.map(|x| x.min(pd)).unwrap_or(pd));
-            }
+        if let Some(p) = &self.panel
+            && let Some(pd) = p.next_deadline()
+        {
+            d = Some(d.map(|x| x.min(pd)).unwrap_or(pd));
         }
         d
     }
@@ -1204,12 +1204,11 @@ impl Keyboard {
                         self.pressed.push(key);
                     }
                     self.actions.push(Action::Haptic(Haptic::Key));
-                    if self.config.key_popup {
-                        if let KeyAction::Text(t) = &self.keys[key].def.action {
-                            if t.chars().count() <= 2 {
-                                self.preview = Some((key, self.cased(t)));
-                            }
-                        }
+                    if self.config.key_popup
+                        && let KeyAction::Text(t) = &self.keys[key].def.action
+                        && t.chars().count() <= 2
+                    {
+                        self.preview = Some((key, self.cased(t)));
                     }
                 }
                 TouchEvent::Released { key } => {
@@ -1377,13 +1376,7 @@ impl Keyboard {
             }
             KeyAction::Layer(name) => KeyLabel::Text(match name.as_str() {
                 "letters" => self.layouts[self.current].letters_label(),
-                "symbols" => {
-                    if self.layer == "symbols2" {
-                        "?123".to_string()
-                    } else {
-                        "?123".to_string()
-                    }
-                }
+                "symbols" => "?123".to_string(),
                 "symbols2" => "=\\<".to_string(),
                 "numpad" => "1234".to_string(),
                 other => other.to_string(),

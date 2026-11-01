@@ -125,12 +125,12 @@ impl Renderer {
 
     /// Load the label and colour emoji fonts once, off the input path.
     pub fn warm_fonts(&self) {
-        if let Ok(s) = cairo::ImageSurface::create(cairo::Format::ARgb32, 64, 64) {
-            if let Ok(cr) = cairo::Context::new(&s) {
-                for t in ["Aa Яя ß", "😀👋🍕"] {
-                    let l = self.layout(&cr, t, 20.0, false);
-                    pangocairo::functions::show_layout(&cr, &l);
-                }
+        if let Ok(s) = cairo::ImageSurface::create(cairo::Format::ARgb32, 64, 64)
+            && let Ok(cr) = cairo::Context::new(&s)
+        {
+            for t in ["Aa Яя ß", "😀👋🍕"] {
+                let l = self.layout(&cr, t, 20.0, false);
+                pangocairo::functions::show_layout(&cr, &l);
             }
         }
     }
@@ -221,10 +221,10 @@ impl Renderer {
             }
         }
         self.draw_trail(&cr, view, theme);
-        if let Some((i, text)) = &view.preview {
-            if let Some(k) = view.keys.get(*i) {
-                self.draw_preview(&cr, k, text, theme, &view.metrics);
-            }
+        if let Some((i, text)) = &view.preview
+            && let Some(k) = view.keys.get(*i)
+        {
+            self.draw_preview(&cr, k, text, theme, &view.metrics);
         }
         if let Some(p) = &view.popup {
             self.draw_popup(&cr, p, theme, &view.metrics);
@@ -244,6 +244,7 @@ impl Renderer {
         layout
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn text_centered(&self, cr: &cairo::Context, text: &str, cx: f64, cy: f64, size: f32, bold: bool, max_w: f64) {
         let layout = self.layout(cr, text, size, bold);
         let (_, logical) = layout.pixel_extents();
