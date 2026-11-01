@@ -174,6 +174,21 @@ impl Recents {
 mod tests {
     use super::*;
 
+    /// recent-emoji as promised for 1.x: one emoji per line, newest first.
+    #[test]
+    fn reads_the_recent_emoji_format() {
+        let dir = std::env::temp_dir().join(format!("glissando-recent-format-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("recent-emoji");
+        std::fs::write(&path, "🍕\n🐱").unwrap();
+
+        let r = Recents::load(&path);
+
+        assert_eq!(r.items().map(String::as_str).collect::<Vec<_>>(), ["🍕", "🐱"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn parses_shipped_data_and_searches() {
         let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/emoji/emoji.tsv");

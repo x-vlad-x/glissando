@@ -147,7 +147,17 @@ fn bench_render() {
     println!("buffer {pw}x{ph} at scale {scale}");
 }
 
+/// The standard message of a panic can quote the text being processed, and
+/// stderr ends up in the journal, so only the location is reported.
+fn panic_report(info: &std::panic::PanicHookInfo) -> String {
+    match info.location() {
+        Some(l) => format!("glissando: internal error at {}:{}", l.file(), l.line()),
+        None => "glissando: internal error".to_string(),
+    }
+}
+
 fn main() {
+    std::panic::set_hook(Box::new(|info| eprintln!("{}", panic_report(info))));
     // A keyboard needs no GVfs; keep gio local-only (no daemons, no network mounts).
     // SAFETY: no other threads exist yet.
     unsafe { std::env::set_var("GIO_USE_VFS", "local") };
@@ -285,4 +295,27 @@ mod libc_sig {
     pub const SIGHUP: i32 = 1;
     pub const SIGINT: i32 = 2;
     pub const SIGTERM: i32 = 15;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn panic_report_does_not_quote_text() {
+        let seen = Arc::new(Mutex::new(String::new()));
+        let hook_seen = seen.clone();
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| *hook_seen.lock().unwrap() = panic_report(info)));
+        let result = std::panic::catch_unwind(|| {
+            let typed = String::from("пароль");
+            let _ = &typed[1..];
+        });
+        std::panic::set_hook(previous);
+        assert!(result.is_err());
+        let report = seen.lock().unwrap();
+        assert!(report.contains("internal error"), "{report}");
+        assert!(!report.contains("пароль"), "{report}");
+    }
 }

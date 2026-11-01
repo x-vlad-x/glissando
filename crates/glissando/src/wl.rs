@@ -38,8 +38,13 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
+/// glissando-trial always passes the variable on, empty unless it was set.
+fn debug_flag(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| !v.is_empty())
+}
+
 fn debug() -> bool {
-    std::env::var_os("GLISSANDO_DEBUG").is_some()
+    debug_flag(std::env::var_os("GLISSANDO_DEBUG").as_deref())
 }
 
 macro_rules! dlog {
@@ -754,7 +759,8 @@ impl App {
                     self.send_vk_key(k.into(), 0)
                 }
                 Action::Chord(k, m) => {
-                    dlog!("chord {k:?} {m:?}");
+                    // The key stays out of the log: it can be a typed letter.
+                    dlog!("chord {m:?}");
                     self.send_chord(k, m)
                 }
                 Action::Haptic(h) => self.haptics.vibrate(match h {
@@ -1490,7 +1496,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 }
             }
             wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
-                if std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some() {
+                if app.kb.log_input() {
                     eprintln!("motion down={} {surface_x:.0},{surface_y:.0}", app.pointer_down);
                 }
                 app.pointer_pos = (surface_x as f32, surface_y as f32);
@@ -1500,7 +1506,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for App {
                 app.kb.touch_motion(POINTER_ID, surface_x as f32, surface_y as f32, now);
             }
             wl_pointer::Event::Button { button, state: WEnum::Value(st), .. } if button == BTN_LEFT => {
-                if std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some() {
+                if app.kb.log_input() {
                     eprintln!("button {st:?} at {:?}", app.pointer_pos);
                 }
                 let (x, y) = app.pointer_pos;
@@ -1675,4 +1681,17 @@ impl Dispatch<zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1, ()> 
 fn owned_fd_from_raw(fd: i32) -> OwnedFd {
     // SAFETY: only used with descriptors we just created.
     unsafe { OwnedFd::from_raw_fd(fd) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::debug_flag;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn empty_debug_variable_is_off() {
+        assert!(!debug_flag(None));
+        assert!(!debug_flag(Some(OsStr::new(""))));
+        assert!(debug_flag(Some(OsStr::new("1"))));
+    }
 }

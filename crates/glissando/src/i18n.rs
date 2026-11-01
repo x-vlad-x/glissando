@@ -61,3 +61,22 @@ pub fn tr(key: &str) -> &'static str {
         Lang::De => t.2,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_key_in_use_has_a_translation() {
+        for source in [include_str!("panels.rs"), include_str!("keyboard.rs")] {
+            for (at, _) in source.match_indices("tr(\"") {
+                if source[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+                    continue;
+                }
+                let key = &source[at + 4..];
+                let key = &key[..key.find('"').unwrap()];
+                assert_ne!(tr(key), "?", "{key}");
+            }
+        }
+    }
+}

@@ -1194,8 +1194,17 @@ impl Keyboard {
         }
     }
 
+    /// Touch logs show which keys were pressed, so private fields stay out.
+    fn input_loggable(&self) -> bool {
+        !self.field.private()
+    }
+
+    pub fn log_input(&self) -> bool {
+        self.input_loggable() && std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some()
+    }
+
     fn handle_events(&mut self, events: Vec<TouchEvent>) {
-        if !events.is_empty() && std::env::var_os("GLISSANDO_DEBUG_INPUT").is_some() {
+        if !events.is_empty() && self.log_input() {
             eprintln!("touch events {events:?}");
         }
         for e in events {
@@ -1661,6 +1670,16 @@ mod tests {
         kb.touch_up(1, x - 60.0, y, 1200);
         let navs = kb.take_actions().into_iter().filter(|a| matches!(a, Action::Nav(NavKey::Left))).count();
         assert!(navs >= 3, "{navs}");
+    }
+
+    #[test]
+    fn touches_in_private_fields_are_not_loggable() {
+        let mut kb = test_keyboard(&["en"]);
+        assert!(kb.input_loggable());
+        kb.activate(FieldInfo { purpose: Purpose::Password, ..FieldInfo::default() });
+        assert!(!kb.input_loggable());
+        kb.activate(FieldInfo { sensitive: true, ..FieldInfo::default() });
+        assert!(!kb.input_loggable());
     }
 
     fn tap(kb: &mut Keyboard, name: &str, t: u32) -> Vec<Action> {
