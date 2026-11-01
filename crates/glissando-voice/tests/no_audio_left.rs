@@ -11,7 +11,7 @@ struct Run {
     root: PathBuf,
     runtime: PathBuf,
     child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
 }
 
@@ -51,7 +51,7 @@ fn start(root: PathBuf, engine: &Path) -> Run {
         .unwrap();
     let stdin = child.stdin.take().unwrap();
     let stdout = BufReader::new(child.stdout.take().unwrap());
-    Run { root, runtime, child, stdin, stdout }
+    Run { root, runtime, child, stdin: Some(stdin), stdout }
 }
 
 impl Run {
@@ -61,15 +61,20 @@ impl Run {
         line.trim_end().to_string()
     }
 
-    /// Lets the helper hear speech, then sends `command`.
-    fn speak_then(&mut self, command: &str) {
+    /// Lets the helper hear speech.
+    fn speak(&mut self) {
         let mut levels = 0;
         while levels < 5 {
             let line = self.read_line();
             assert!(!line.is_empty() && !line.starts_with("error"), "{line:?}");
             levels += line.starts_with("level ") as u32;
         }
-        writeln!(self.stdin, "{command}").unwrap();
+    }
+
+    /// Lets the helper hear speech, then sends `command`.
+    fn speak_then(&mut self, command: &str) {
+        self.speak();
+        writeln!(self.stdin.as_mut().unwrap(), "{command}").unwrap();
     }
 
     /// The first line with `prefix`, or an empty string at end of output.
@@ -124,6 +129,19 @@ fn missing_engine_leaves_nothing() {
     let mut run = start(root, &engine);
     run.speak_then("stop");
     assert!(run.line_starting("error").starts_with("error"));
+    run.assert_no_audio_left();
+}
+
+#[test]
+fn losing_the_keyboard_does_not_transcribe() {
+    let root = temp_dir("closed");
+    let marker = root.join("engine-ran");
+    let engine = engine_script(&root, "touch \"$root/engine-ran\"");
+    let mut run = start(root, &engine);
+    run.speak();
+    drop(run.stdin.take());
+    assert_eq!(run.line_starting("text"), "");
+    assert!(!marker.exists(), "nobody can receive the text");
     run.assert_no_audio_left();
 }
 

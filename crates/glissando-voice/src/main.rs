@@ -89,7 +89,7 @@ fn spool_wav(dir: &Path, samples: &[i16]) -> std::io::Result<std::fs::File> {
     let mut opts = std::fs::OpenOptions::new();
     opts.read(true).write(true);
     std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut opts, libc::O_TMPFILE);
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut opts, libc::O_TMPFILE | libc::O_EXCL);
     let file = opts.open(dir)?;
     write_wav(&file, samples)?;
     Ok(file)
@@ -249,7 +249,8 @@ fn main() {
                 Err(_) => break,
             }
         }
-        let _ = ctl_tx.send("stop".into());
+        // The keyboard is gone, so nobody can receive the text.
+        let _ = ctl_tx.send("cancel".into());
     });
     // Start a recorder.
     let samples: Arc<Mutex<Vec<i16>>> = Arc::new(Mutex::new(Vec::new()));
@@ -382,14 +383,19 @@ fn main() {
     };
     drop(audio);
     let threads = args.threads.max(1).to_string();
+    let helper = std::process::id() as libc::pid_t;
     let mut engine_command = Command::new(&engine);
     // The audio lives only as long as this process: without this the engine
     // would outlive a killed helper and go on reading it.
     // SAFETY: prctl is async-signal-safe and touches no shared state.
     unsafe {
-        std::os::unix::process::CommandExt::pre_exec(&mut engine_command, || {
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) == -1 {
+        std::os::unix::process::CommandExt::pre_exec(&mut engine_command, move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong) == -1 {
                 return Err(std::io::Error::last_os_error());
+            }
+            // The helper may have died just before the call above.
+            if libc::getppid() != helper {
+                libc::_exit(1);
             }
             Ok(())
         });
