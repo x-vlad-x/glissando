@@ -5,11 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install system libraries
         run: |
           sudo apt-get update
@@ -17,7 +20,7 @@ jobs:
             libglib2.0-dev libcairo2-dev libpango1.0-dev libgtk-4-dev libadwaita-1-dev
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal -c rustfmt -c clippy && rustup default stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -36,3 +39,75 @@ jobs:
         run: |
           ! cargo metadata --format-version 1 --locked | python3 -c 'import json,sys; print("\n".join(p["name"] for p in json.load(sys.stdin)["packages"]))' \
             | grep -qxE 'reqwest|hyper|ureq|curl|openssl|native-tls|rustls|h2|quinn|sentry'
+
+  dictionaries:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .devtools/dict-cache
+          key: dict-sources-${{ hashFiles('tools/build-dicts.py') }}
+      - name: Build from the pinned sources
+        run: python3 tools/build-dicts.py
+      - name: Output matches the committed hashes
+        run: git diff --exit-code data/dict/SOURCES.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dictionaries
+          path: data/dict/*.gld
+          if-no-files-found: error
+          retention-days: 7
+
+  # Arch, because tools/devenv/fetch-sway.sh needs pacman. The image and the
+  # package snapshot move together: update both to the same date. Privileged,
+  # because the offline privacy check needs a user namespace, which the default
+  # container profile refuses.
+  e2e:
+    needs: dictionaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: docker.io/library/archlinux:base-devel-20261025.0.616225@sha256:624bdc7fc6615155d67bc34cf7146c0c9fd0e3c92943977da63a630e4ca49c30
+      options: --privileged
+    env:
+      ARCH_SNAPSHOT: 2026/10/25
+    steps:
+      - name: Install system packages
+        run: |
+          echo "Server=https://archive.archlinux.org/repos/$ARCH_SNAPSHOT/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+          pacman -Syyuu --noconfirm
+          pacman -S --noconfirm --needed git rust python python-gobject dbus iproute2 gtk4 libadwaita
+          # Runtime libraries of the binaries that fetch-sway.sh unpacks.
+          pacman -Si sway grim wtype | sed -n 's/^Depends On *: //p' | tr -s ' ' '\n' \
+            | grep -vx None | xargs pacman -S --noconfirm --needed
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .devtools/pkgs
+            .devtools/root
+          key: devtools-${{ env.ARCH_SNAPSHOT }}-${{ hashFiles('tools/devenv/fetch-sway.sh') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: e2e-cargo-${{ env.ARCH_SNAPSHOT }}-${{ hashFiles('Cargo.lock') }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dictionaries
+          path: data/dict
+      - name: Test compositor
+        run: tools/devenv/fetch-sway.sh
+      - name: Build
+        run: cargo build --locked --workspace
+      - name: E2E portrait
+        run: dbus-run-session -- python3 -I tests/e2e/e2e.py
+      - name: E2E landscape
+        run: dbus-run-session -- python3 -I tests/e2e/e2e.py
+        env:
+          E2E_LANDSCAPE: "1"
+      - name: Privacy checks
+        run: tests/privacy/check.sh
