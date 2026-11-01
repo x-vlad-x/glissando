@@ -198,6 +198,62 @@ pub fn write_private(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     result
 }
 
+/// Remove the temporary files a crash left next to personal data files in `dir`.
+/// They hold copies of that data, which deleting it would otherwise miss.
+pub fn remove_stale_temporary_files(dir: &Path) {
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        if entry.path().extension().is_some_and(|e| e == "tmp") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// What a change of config.toml asks the keyboard to delete or reload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EpochChange {
+    None,
+    UserDict,
+    UserData,
+}
+
+/// Tells a request from the settings app from a damaged file. The epochs only
+/// grow, so only a value above the highest one seen is a request: a file that
+/// is blank, partial or restored from a backup must never delete anything.
+#[derive(Debug, Clone, Copy)]
+pub struct EpochTracker {
+    /// `None` until a usable file has been read.
+    seen: Option<(u64, u64)>,
+}
+
+impl EpochTracker {
+    /// Start from the file as it is now.
+    pub fn from_file() -> EpochTracker {
+        EpochTracker::from_path(&Config::path())
+    }
+
+    fn from_path(path: &Path) -> EpochTracker {
+        let blank = std::fs::read_to_string(path).is_ok_and(|s| s.trim().is_empty());
+        let usable = if blank { None } else { Config::read_from(path).ok() };
+        EpochTracker { seen: usable.map(|c| (c.user_data_epoch, c.user_dict_epoch)) }
+    }
+
+    pub fn observe(&mut self, config: &Config) -> EpochChange {
+        let now = (config.user_data_epoch, config.user_dict_epoch);
+        let Some(seen) = self.seen else {
+            self.seen = Some(now);
+            return EpochChange::None;
+        };
+        self.seen = Some((seen.0.max(now.0), seen.1.max(now.1)));
+        if now.0 > seen.0 {
+            EpochChange::UserData
+        } else if now.1 > seen.1 {
+            EpochChange::UserDict
+        } else {
+            EpochChange::None
+        }
+    }
+}
+
 impl Config {
     /// Should the keyboard stay closed on focus in this app?
     pub fn auto_show_blocked(&self, app_id: &str) -> bool {
@@ -374,6 +430,54 @@ mod tests {
         assert!(write_private(&path, b"new").is_err());
 
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn only_a_higher_epoch_is_a_request() {
+        let with = |data, dict| Config { user_data_epoch: data, user_dict_epoch: dict, ..Config::default() };
+        let mut t = EpochTracker { seen: Some((3, 5)) };
+
+        assert_eq!(t.observe(&with(3, 5)), EpochChange::None);
+        // A truncated file reads as the defaults; its return is not a request.
+        assert_eq!(t.observe(&with(0, 0)), EpochChange::None);
+        assert_eq!(t.observe(&with(3, 5)), EpochChange::None);
+        assert_eq!(t.observe(&with(3, 6)), EpochChange::UserDict);
+        assert_eq!(t.observe(&with(4, 6)), EpochChange::UserData);
+    }
+
+    #[test]
+    fn a_file_broken_at_startup_is_not_a_baseline() {
+        let dir = scratch_dir("baseline");
+        let path = dir.join("config.toml");
+        for broken in ["theme = [unfinished", " \n"] {
+            std::fs::write(&path, broken).unwrap();
+            let mut t = EpochTracker::from_path(&path);
+            let fixed = Config { user_data_epoch: 4, ..Config::default() };
+            assert_eq!(t.observe(&fixed), EpochChange::None);
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_first_deletion_is_a_request_without_a_file() {
+        let dir = scratch_dir("first");
+        let mut t = EpochTracker::from_path(&dir.join("config.toml"));
+        let c = Config { user_data_epoch: 1, ..Config::default() };
+        assert_eq!(t.observe(&c), EpochChange::UserData);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stale_temporary_files_are_removed() {
+        let dir = scratch_dir("stale");
+        std::fs::write(dir.join("pinned-clips.12.0.tmp"), "secret").unwrap();
+        std::fs::write(dir.join("pinned-clips"), "kept").unwrap();
+
+        remove_stale_temporary_files(&dir);
+
+        let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, ["pinned-clips"]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

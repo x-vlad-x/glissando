@@ -193,6 +193,18 @@ impl App {
         if config.key_borders { t.with_borders() } else { t }
     }
 
+    /// Write what the quick menu changed. A failed write is tried again the
+    /// next time the file changes, for example once a typo in it is fixed.
+    pub fn save_config_changes(&mut self) {
+        if self.kb.config == self.saved_config {
+            return;
+        }
+        match Config::save_changes(&self.saved_config, &self.kb.config) {
+            Ok(()) => self.saved_config = self.kb.config.clone(),
+            Err(e) => eprintln!("glissando: saving config failed: {e}"),
+        }
+    }
+
     pub fn apply_config(&mut self, config: Config, layouts: Vec<glissando_core::layout::Layout>) {
         self.saved_config = config.clone();
         self.theme = Self::theme_for(&config);
@@ -767,10 +779,7 @@ impl App {
                 }
                 Action::Resize => self.update_height(),
                 Action::SaveConfig => {
-                    match Config::save_changes(&self.saved_config, &self.kb.config) {
-                        Ok(()) => self.saved_config = self.kb.config.clone(),
-                        Err(e) => eprintln!("glissando: saving config failed: {e}"),
-                    }
+                    self.save_config_changes();
                     self.theme = Self::theme_for(&self.kb.config);
                     self.update_height();
                 }

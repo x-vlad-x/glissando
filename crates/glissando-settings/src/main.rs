@@ -7,7 +7,10 @@
 mod strings;
 
 use adw::prelude::*;
-use glissando_config::{Config, OneHanded, ThemeMode, config_dir, data_dir, find_resource, resource_dirs, state_dir};
+use glissando_config::{
+    Config, OneHanded, ThemeMode, config_dir, data_dir, find_resource, remove_stale_temporary_files, resource_dirs,
+    state_dir,
+};
 use glissando_lang::user::{LEARN_THRESHOLD, UserModel};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -772,6 +775,7 @@ fn privacy_page(nav: &adw::NavigationView, state: &State, window: &adw::Applicat
                 let _ = std::fs::remove_dir_all(data_dir().join("user"));
                 let _ = std::fs::remove_file(state_dir().join("recent-emoji"));
                 let _ = std::fs::remove_file(state_dir().join("pinned-clips"));
+                remove_stale_temporary_files(&state_dir());
                 edit(&st2, |c| c.user_data_epoch += 1);
             }
         });

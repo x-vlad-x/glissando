@@ -84,7 +84,7 @@ pub fn emoji_for_word(word: &str) -> Vec<String> {
 pub struct PanelState {
     pub kind: PanelKind,
     area: Rect,
-    config: Config,
+    pub(crate) config: Config,
     cells: Vec<(Rect, PanelCell, CellAction)>,
     footer: Vec<(Rect, PanelCell, CellAction)>,
     /// Content offset of each emoji group (for tabs).

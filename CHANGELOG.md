@@ -15,6 +15,8 @@
   quick menu while it is open (#3)
 - Recent emoji and pinned clipboard items are written atomically and readable
   only by you, so a crash during a write can no longer lose them (#6)
+- A damaged `config.toml` no longer deletes learned words and is no longer
+  replaced by the defaults; quick menu changes are saved once it is fixed
 
 ## 0.3.0 – third preview
 
