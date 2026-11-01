@@ -77,7 +77,7 @@ jobs:
         run: |
           echo "Server=https://archive.archlinux.org/repos/$ARCH_SNAPSHOT/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
           pacman -Syyuu --noconfirm
-          pacman -S --noconfirm --needed git rust python dbus iproute2 gtk4 libadwaita
+          pacman -S --noconfirm --needed git rust python python-gobject dbus iproute2 gtk4 libadwaita
           # Runtime libraries of the binaries that fetch-sway.sh unpacks.
           pacman -Si sway grim wtype | sed -n 's/^Depends On *: //p' | tr -s ' ' '\n' \
             | grep -vx None | xargs pacman -S --noconfirm --needed
