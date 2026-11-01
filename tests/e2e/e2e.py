@@ -203,6 +203,10 @@ class Session:
 TESTS = []
 
 
+def assert_log_clean(s, text):
+    assert text not in s.log("kb"), f"debug log contains {text!r}"
+
+
 def test(fn):
     TESTS.append(fn)
     return fn
@@ -281,6 +285,7 @@ def terminal_keys(s):
     s.tap("{escape}")
     s.wait(lambda: s.state()["text"] == "ls<C-c><A-Left><Esc>", "keys with modifiers")
     s.screenshot("terminal")
+    assert_log_clean(s, "Char(")
 terminal_keys.purpose = "terminal"
 
 
@@ -366,6 +371,7 @@ def run_password(args):
         s.type("helo ")
         s.wait(lambda: s.state()["text"] == "helo ", "password typed verbatim")
         assert s.state()["preedit"] == ""
+        assert_log_clean(s, "helo")
         user_dir = os.path.join(s.env["XDG_DATA_HOME"], "glissando", "user")
         time.sleep(0.3)
         assert not os.path.exists(user_dir) or all(os.path.getsize(os.path.join(user_dir, f)) == 0 for f in os.listdir(user_dir))

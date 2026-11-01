@@ -2,8 +2,9 @@
 //!
 //! Records from the default audio source with a system tool (parecord,
 //! pw-record or arecord), stops on silence or on request, and transcribes
-//! with a local whisper.cpp model. Audio only ever lives in memory and in a
-//! private file in `$XDG_RUNTIME_DIR` (tmpfs) that is removed right away.
+//! with a local whisper.cpp model. Audio only ever lives in memory and in an
+//! unnamed private file in `$XDG_RUNTIME_DIR` (tmpfs), so no failure path and
+//! no signal can leave a recording behind.
 //!
 //! Protocol (one line per message on stdout):
 //!   `listening` · `level <0..1>` · `processing` · `text <utf8>` · `error <msg>`
@@ -81,11 +82,29 @@ pub fn find_model(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn write_wav(path: &Path, samples: &[i16]) -> std::io::Result<()> {
+/// Stores the recording in a file that loses its name before any audio is
+/// written. The keyboard kills this helper when focus changes during
+/// transcription, so removing a named file afterwards would not be enough.
+fn spool_wav(dir: &Path, samples: &[i16]) -> std::io::Result<std::fs::File> {
+    let path = dir.join(format!("glissando-voice-{}.wav", std::process::id()));
     let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create_new(true);
+    opts.read(true).write(true).create_new(true);
     std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
-    let mut f = std::io::BufWriter::new(opts.open(path)?);
+    let file = opts.open(&path)?;
+    std::fs::remove_file(&path)?;
+    write_wav(&file, samples)?;
+    Ok(file)
+}
+
+/// The path through which another process of this user can open `file`
+/// while this process is alive.
+fn proc_path(file: &std::fs::File) -> PathBuf {
+    let fd = std::os::fd::AsRawFd::as_raw_fd(file);
+    PathBuf::from(format!("/proc/{}/fd/{fd}", std::process::id()))
+}
+
+fn write_wav(out: impl Write, samples: &[i16]) -> std::io::Result<()> {
+    let mut f = std::io::BufWriter::new(out);
     let data = (samples.len() * 2) as u32;
     f.write_all(b"RIFF")?;
     f.write_all(&(36 + data).to_le_bytes())?;
@@ -355,23 +374,25 @@ fn main() {
     }
     say("processing");
     let dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let wav = dir.join(format!("glissando-voice-{}.wav", std::process::id()));
-    if let Err(e) = write_wav(&wav, &audio) {
-        say(&format!("error {e}"));
-        return;
-    }
+    let wav = match spool_wav(&dir, &audio) {
+        Ok(f) => f,
+        Err(e) => {
+            say(&format!("error {e}"));
+            return;
+        }
+    };
     drop(audio);
     let threads = args.threads.max(1).to_string();
     let result = Command::new(&engine)
         .args(["-m"])
         .arg(&model)
         .args(["-f"])
-        .arg(&wav)
+        .arg(proc_path(&wav))
         // Greedy decoding: ~25 % faster than beam search on phone CPUs.
         .args(["-l", &args.lang, "-nt", "-np", "-sns", "-bs", "1", "-bo", "1", "-t", &threads])
         .stdin(Stdio::null())
         .output();
-    let _ = std::fs::remove_file(&wav);
+    drop(wav);
     match result {
         Ok(o) if o.status.success() => say(&format!("text {}", clean_transcript(&String::from_utf8_lossy(&o.stdout)))),
         Ok(o) => {
@@ -407,11 +428,13 @@ mod tests {
 
     #[test]
     fn wav_header() {
-        let p = std::env::temp_dir().join(format!("gv-test-{}.wav", std::process::id()));
-        write_wav(&p, &[0, 1, -1]).unwrap();
-        let b = std::fs::read(&p).unwrap();
+        let d = std::env::temp_dir().join(format!("gv-spool-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = spool_wav(&d, &[0, 1, -1]).unwrap();
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0, "the audio file must have no name");
+        let b = std::fs::read(proc_path(&f)).unwrap();
         assert_eq!(&b[0..4], b"RIFF");
         assert_eq!(b.len(), 44 + 6);
-        std::fs::remove_file(p).unwrap();
+        std::fs::remove_dir_all(d).unwrap();
     }
 }

@@ -7,6 +7,11 @@
   `sm.puri.OSK0.desktop` failed with "Oh no! Something has gone wrong".
   Thanks to [@VipinVIP](https://github.com/VipinVIP) for tracking this down
   on a system without systemd and proposing the fix (#1)
+- A recording no longer stays in the runtime directory when a field loses
+  focus during transcription: the audio file now has no name (#23)
+- `GLISSANDO_DEBUG` no longer logs the letter of Ctrl and Alt shortcuts,
+  `GLISSANDO_DEBUG_INPUT` logs nothing in password fields, and crash messages
+  no longer quote text (#23)
 
 ## 0.3.0 – third preview
 
