@@ -7,7 +7,7 @@ dbus-run-session) so nothing touches the developer's desktop.
 
     tests/e2e/e2e.py [-k NAME] [--keep] [--shots DIR] [--release]
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile, time, traceback
+import argparse, json, os, pathlib, shutil, subprocess, sys, tempfile, time, traceback
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SWAY = os.path.join(ROOT, ".devtools/root/usr/bin/sway")
@@ -37,7 +37,7 @@ A11Y = "org.gnome.desktop.a11y.applications"
 
 class Session:
     def __init__(self, args, purpose=None, hint=None, config=None, kb_args=(), toolkit=None, app_id=None,
-                 text=None, dbus=False, expect_keyboard=True, desktop_settings=False):
+                 text=None, dbus=False, session_manager=False, expect_keyboard=True, desktop_settings=False):
         self.args = args
         self.tmp = tempfile.mkdtemp(prefix="glissando-e2e-")
         self.env = dict(os.environ)
@@ -90,6 +90,10 @@ class Session:
             self.spawn("dbus", ["dbus-daemon", "--session", "--nofork", "--address=unix:path=" + bus])
             self.env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=" + bus
             self.wait(lambda: os.path.exists(bus), "session bus")
+        if session_manager:
+            self.spawn("session-manager", [sys.executable, "-I", os.path.join(ROOT, "tests/e2e/fake_session_manager.py")])
+            self.wait(lambda: "ready" in self.log("session-manager"), "fake session manager")
+            self.env["DESKTOP_AUTOSTART_ID"] = "e2e-startup-id"
         self.spawn("kb", [self.kb_bin, *([] if dbus else ["--no-dbus"]), "--dump-geometry", self.geom_file, *kb_args],
                    extra_env={"GLISSANDO_DEBUG": "1",
                               **({"GLISSANDO_DEBUG_INPUT": "1"} if os.environ.get("E2E_INPUT") else {}),
@@ -378,6 +382,43 @@ def run_home_bar_toggle(args):
 
 
 @test
+def session_manager_end_of_session(s):
+    pass  # see run_session_manager
+
+
+def run_session_manager(args):
+    s = Session(args, dbus=True, session_manager=True, config="autocorrect = false\n")
+    try:
+        def calls():
+            return s.log("session-manager").splitlines()
+
+        def emit(signal):
+            subprocess.run(["gdbus", "call", "--session", "--dest", "org.gnome.SessionManager",
+                            "--object-path", "/org/gnome/SessionManager",
+                            "--method", "org.gnome.SessionManager.E2E.Emit", signal],
+                           env=s.env, check=True, timeout=5, stdout=subprocess.DEVNULL)
+
+        s.wait(lambda: "RegisterClient sm.puri.OSK0 e2e-startup-id owned=True" in calls(), "registration")
+        emit("QueryEndSession")
+        s.wait(lambda: calls().count("EndSessionResponse True ") == 1, "answer to QueryEndSession")
+        emit("EndSession")
+        s.wait(lambda: calls().count("EndSessionResponse True ") == 2, "answer to EndSession")
+
+        s.type("blorp ")
+        s.wait(lambda: s.state()["text"] == "Blorp ", "typed word")
+        kb = dict(s.procs)["kb"]
+        assert kb.poll() is None, "the keyboard must keep running until Stop"
+        emit("Stop")
+        s.wait(lambda: kb.poll() is not None, "exit on Stop")
+        assert kb.returncode == 0, f"exit status {kb.returncode}"
+        user = pathlib.Path(s.env["XDG_DATA_HOME"], "glissando", "user")
+        learned = "".join(f.read_text() for f in user.glob("*.tsv"))
+        assert "\tblorp\t" in learned.lower(), f"learned word lost on Stop: {learned!r}"
+    finally:
+        s.close()
+
+
+@test
 def follows_screen_keyboard_enabled(s):
     s.gsettings(A11Y, "screen-keyboard-enabled", "false")
     s.wait(lambda: not shown(s), "hidden while disabled")
@@ -598,6 +639,8 @@ def main():
                 run_no_auto_show(args)
             elif t.__name__ == "home_bar_toggle":
                 run_home_bar_toggle(args)
+            elif t.__name__ == "session_manager_end_of_session":
+                run_session_manager(args)
             else:
                 s = Session(args, config=getattr(t, "config", None), toolkit=getattr(t, "toolkit", None),
                             purpose=getattr(t, "purpose", None), text=getattr(t, "text", None),
