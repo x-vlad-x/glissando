@@ -3,9 +3,13 @@
 FROM docker.io/library/debian:testing-slim
 ARG SNAPSHOT=20260615T000000Z
 ARG RUST_VERSION=1.99.0
+# snapshot.debian.org sometimes answers 503 for a few minutes. Retry with
+# increasing delays, and stop at a failed index download instead of going on
+# and reporting every package as missing.
 RUN rm -f /etc/apt/sources.list.d/* \
  && echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${SNAPSHOT} forky main" > /etc/apt/sources.list \
- && printf 'Package: *\nPin: origin snapshot.debian.org\nPin-Priority: 1001\n' > /etc/apt/preferences
+ && printf 'Package: *\nPin: origin snapshot.debian.org\nPin-Priority: 1001\n' > /etc/apt/preferences \
+ && printf 'Acquire::Retries "8";\nAPT::Update::Error-Mode "any";\n' > /etc/apt/apt.conf.d/80retries
 ENV DEBIAN_FRONTEND=noninteractive
 RUN dpkg --add-architecture arm64 && apt-get update && apt-get install -y --allow-downgrades --no-install-recommends \
       ca-certificates curl git cmake make gcc g++ gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev libc6-dev:arm64 pkgconf dpkg-dev fakeroot \
