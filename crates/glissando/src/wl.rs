@@ -61,6 +61,9 @@ struct Buffer {
 
 struct ImState {
     active: bool,
+    /// An `activate` event arrived since the last `done`: a new field, even
+    /// when the previous one was active until now.
+    activated: bool,
     surrounding: Option<(String, u32, u32)>,
     hint: ContentHint,
     purpose: Option<ContentPurpose>,
@@ -68,7 +71,7 @@ struct ImState {
 
 impl Default for ImState {
     fn default() -> Self {
-        ImState { active: false, surrounding: None, hint: ContentHint::empty(), purpose: None }
+        ImState { active: false, activated: false, surrounding: None, hint: ContentHint::empty(), purpose: None }
     }
 }
 
@@ -116,6 +119,9 @@ pub struct App {
     im_current: ImState,
     im_serial: u32,
     last_preedit: String,
+    /// Serial of the last input-method commit and how many commits used it.
+    im_commit_serial: u32,
+    im_commits_at_serial: u32,
     vk: Option<zwp_virtual_keyboard_v1::ZwpVirtualKeyboardV1>,
     keymap: Keymap,
     keymap_sent: u64,
@@ -563,7 +569,7 @@ impl App {
         dlog!("im done -> serial {}", self.im_serial);
         let was_active = self.im_current.active;
         let p = std::mem::take(&mut self.im_pending);
-        let activated = p.active && !was_active;
+        let activated = p.active && (p.activated || !was_active);
         let content_changed = p.hint != self.im_current.hint || p.purpose != self.im_current.purpose;
         self.im_current.active = p.active;
         self.im_current.hint = p.hint;
@@ -594,8 +600,43 @@ impl App {
             }
             self.im_current.surrounding = Some((text, cursor, anchor));
         }
+        if p.active && !activated {
+            self.resend_dropped_preedit();
+        }
         self.update_visibility();
         self.after_input();
+    }
+
+    fn note_im_commit(&mut self) {
+        if self.im_commit_serial == self.im_serial {
+            self.im_commits_at_serial = self.im_commits_at_serial.saturating_add(1);
+        } else {
+            self.im_commit_serial = self.im_serial;
+            self.im_commits_at_serial = 1;
+        }
+    }
+
+    /// The compositor drops a commit whose serial is out of date. When several
+    /// commits went out with one serial and a `done` followed, the later ones
+    /// may have crossed that `done` and been dropped, leaving the field with an
+    /// older preedit than `last_preedit`. Setting the same preedit again is
+    /// harmless, so send it once more with the current serial. Committed text
+    /// and deletions are not repeated: if they did arrive, repeating them would
+    /// duplicate the edit, so a dropped commit that carried them stays lost.
+    ///
+    /// A single commit that crosses a `done` is not resent. The resend itself
+    /// is such a commit, and resending it would answer every `done` with
+    /// another commit and loop.
+    fn resend_dropped_preedit(&mut self) {
+        if self.im_commits_at_serial < 2 || self.im_commit_serial == self.im_serial || self.last_preedit.is_empty() {
+            return;
+        }
+        let Some(im) = &self.im else { return };
+        let len = self.last_preedit.len() as i32;
+        im.set_preedit_string(self.last_preedit.clone(), len, len);
+        im.commit(self.im_serial);
+        dlog!("im commit serial {} (preedit {} bytes, resent)", self.im_serial, self.last_preedit.len());
+        self.note_im_commit();
     }
 
     fn send_vk_key(&mut self, key: VkKey, mods: u32) {
@@ -711,6 +752,7 @@ impl App {
             dlog!("im commit serial {} (preedit {} bytes)", app.im_serial, p.len());
             app.last_preedit = p;
             im.commit(app.im_serial);
+            app.note_im_commit();
         };
         for op in ops {
             match op {
@@ -1089,6 +1131,8 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         im_current: ImState::default(),
         im_serial: 0,
         last_preedit: String::new(),
+        im_commit_serial: 0,
+        im_commits_at_serial: 0,
         vk,
         keymap: Keymap::default(),
         keymap_sent: 0,
@@ -1550,7 +1594,7 @@ impl Dispatch<zwp_input_method_v2::ZwpInputMethodV2, ()> for App {
         match e {
             Event::Activate => {
                 // Activation resets the double-buffered text input state.
-                app.im_pending = ImState { active: true, ..Default::default() };
+                app.im_pending = ImState { active: true, activated: true, ..Default::default() };
             }
             Event::Deactivate => app.im_pending.active = false,
             Event::SurroundingText { text, cursor, anchor } => {
