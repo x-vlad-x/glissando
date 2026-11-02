@@ -74,8 +74,11 @@ systemctl --user daemon-reload && systemctl --user restart mobi.phosh.OSK.servic
 The package registers a Phosh-OSK alternative with priority 20 (Stevia has
 30), so installing it never changes the active keyboard by itself. The
 system unit has the same network ban and crash fallback as the user setup.
-`apt-get install -s` of both packages was checked on the device. The real
-install, upgrade and removal cycle has not been run on a device yet.
+The package cycle was run on a FuriPhone FLX1s: upgrade from 0.3.0 with the
+selection and the user files unchanged, switching to Stevia and back, removal
+while glissando was the active keyboard (the alternative fell back to Stevia
+in auto mode) and installing again (Stevia stayed selected until the manual
+switch).
 
 To upgrade, install the new packages the same way, then restart the keyboard
 service. The prerm script removes the alternative only on removal, and the
