@@ -200,6 +200,20 @@ struct Args {
     input: Option<PathBuf>,
 }
 
+const USAGE: &str = "\
+usage: glissando-voice [options]
+Records one utterance from the microphone and prints the recognized text.
+Started by the glissando keyboard; there is no need to run it by hand.
+
+  --lang LANG         speech language, or auto (default)
+  --model PATH        whisper model file
+  --engine PATH       whisper-cli binary
+  --max-seconds N     stop recording after N seconds (default 30)
+  --threads N         recognition threads
+  --input PATH        read 16 kHz mono s16le samples instead of the microphone
+  --check             exit 0 when a model and an engine are installed
+  -h, --help          show this help";
+
 fn parse_args() -> Args {
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
     let input = std::env::var_os("GLISSANDO_VOICE_TEST_INPUT").map(PathBuf::from);
@@ -209,6 +223,10 @@ fn parse_args() -> Args {
     while i < v.len() {
         let next = v.get(i + 1).cloned().unwrap_or_default();
         match v[i].as_str() {
+            "--lang" | "--model" | "--engine" | "--max-seconds" | "--threads" | "--input" if i + 1 >= v.len() => {
+                eprintln!("glissando-voice: {} needs a value\n{USAGE}", v[i]);
+                std::process::exit(2);
+            }
             "--lang" => a.lang = next,
             "--model" => a.model = Some(next.into()),
             "--engine" => a.engine = Some(next.into()),
@@ -220,7 +238,15 @@ fn parse_args() -> Args {
                 let ok = find_model("").is_some() && find_in_path("whisper-cli").is_some();
                 std::process::exit(if ok { 0 } else { 1 });
             }
-            _ => {}
+            "-h" | "--help" => {
+                println!("{USAGE}");
+                std::process::exit(0);
+            }
+            other => {
+                // Never fall through to recording on a mistyped option.
+                eprintln!("glissando-voice: unknown option {other}\n{USAGE}");
+                std::process::exit(2);
+            }
         }
         i += 2;
     }
