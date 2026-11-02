@@ -103,7 +103,10 @@ and the icon in `~/.local/share/icons/hicolor/scalable/apps`.
 * automatic: after three failures within five minutes the launcher starts
   Stevia or Squeekboard. An exit with status 0 or 143 does not count as a
   failure. Once the failures are older than five minutes, the next start tries
-  glissando again. This has not been verified on a device yet.
+  glissando again. Checked on the FuriPhone FLX1s by killing glissando three
+  times with `kill -ABRT`: systemd restarted it twice, then Stevia started.
+  Use SIGABRT for this test: the Rust runtime catches the first SIGSEGV sent
+  with `kill`, so that signal does not end the process.
 
 ## Verified on the device
 

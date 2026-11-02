@@ -24,19 +24,20 @@ This page is a short summary. Device results are in [DEVICE.md](DEVICE.md).
 The settings app has no e2e test. The voice e2e test needs a speech model, so it
 reports `SKIP` in CI.
 
+## Checked on the device
+
+* Debian packages with a non-default Phosh-OSK alternative: install, upgrade
+  from 0.3.0, switching, removal and installing again (#10)
+* Fallback to the system keyboard after three crashes (#9)
+
 ## In the repository, not yet proven on a device
 
-* Debian packages with a non-default Phosh-OSK alternative, generated
-  dependencies, AppStream metadata and man pages
 * Release workflow for arm64 packages, triggered by a `v*` tag
-* Fallback to the system keyboard
 
 ## Open before 1.0.0
 
 * Manual device checks on the FLX1s: Qt and Chromium apps, live speech,
   terminals, password fields, rotation, login, suspend (#8)
-* Fallback to the system keyboard on a device (#9)
-* Install, upgrade and removal cycle on a device (#10)
 * Text input against newer GTK and phoc (#7)
 * Performance measurements on the device (#22)
 * Updates through an APT repository (#21)
