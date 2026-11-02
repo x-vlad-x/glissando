@@ -26,6 +26,9 @@
   that are not enabled
 - A damaged `config.toml` no longer deletes learned words and is no longer
   replaced by the defaults; quick menu changes are saved once it is fixed
+- During fast typing the field no longer keeps showing an incomplete word:
+  an update that the compositor dropped because it crossed a reply from the
+  app is sent again
 
 ## 0.3.0 – third preview
 
