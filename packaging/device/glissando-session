@@ -16,6 +16,9 @@ enable)
     mkdir -p "$DIR"
     cat > "$FILE" <<CONF
 [Service]
+# Type=dbus would stop the unit as soon as the crashed keyboard drops
+# sm.puri.OSK0, before glissando-launch records the crash or restarts it.
+Type=exec
 ExecStart=
 ExecStart=$PREFIX/bin/glissando-launch
 # The keyboard never needs the network: enforce it in the kernel.

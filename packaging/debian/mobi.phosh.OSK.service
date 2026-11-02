@@ -8,7 +8,10 @@ After=gnome-session-initialized.target
 
 [Service]
 Slice=session.slice
-Type=dbus
+# Not Type=dbus: when glissando crashes, systemd would see sm.puri.OSK0 go
+# away, stop the unit with SIGTERM before glissando-launch records the crash,
+# and count it as success, so neither Restart= nor the fallback would run.
+Type=exec
 BusName=sm.puri.OSK0
 ExecStart=/usr/libexec/glissando/glissando-launch
 Restart=on-failure

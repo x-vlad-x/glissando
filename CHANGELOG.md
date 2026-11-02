@@ -29,6 +29,12 @@
 - During fast typing the field no longer keeps showing an incomplete word:
   an update that the compositor dropped because it crossed a reply from the
   app is sent again
+- After a crash, systemd restarts the keyboard again, and after three
+  crashes within five minutes Stevia or Squeekboard takes over. Until now
+  the keyboard service stopped after the first crash, leaving no screen
+  keyboard (#9)
+- `glissando-voice --help` prints usage instead of starting to record, and
+  unknown options are rejected (#42)
 
 ## 0.3.0 – third preview
 
