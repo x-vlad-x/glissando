@@ -33,6 +33,8 @@ reports `SKIP` in CI.
 ## In the repository, not yet proven on a device
 
 * Release workflow for arm64 packages, triggered by a `v*` tag
+* Updates through the signed APT repository at <https://deb.xvlad.com>,
+  starting with 1.0.0-rc.1 (#21)
 
 ## Open before 1.0.0
 
@@ -40,7 +42,6 @@ reports `SKIP` in CI.
   terminals, password fields, rotation, login, suspend (#8)
 * Text input against newer GTK and phoc (#7)
 * Performance measurements on the device (#22)
-* Updates through an APT repository (#21)
 * Published dictionary artifact for CI (#14)
 * Signed release artifacts, and a release workflow run against a real tag (#16)
 * Translation review (#25)

@@ -88,18 +88,49 @@ network namespace. Details: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Install on FuriOS / Phosh
 
-Download the packages from the
-[latest release](https://github.com/x-vlad-x/glissando/releases/latest) on the
-phone, then:
+The current version is the release candidate **1.0.0-rc.1**. Please report
+any problem in the [issues](https://github.com/x-vlad-x/glissando/issues).
+
+### From the APT repository (recommended)
+
+The packages are published in the signed APT repository
+[deb.xvlad.com](https://deb.xvlad.com), so updates arrive with
+`apt upgrade`. On the phone:
 
 ```bash
-sudo apt install ./glissando_*_arm64.deb ./glissando-voice_*_arm64.deb   # voice is optional
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://deb.xvlad.com/xvlad.gpg | sudo tee /etc/apt/keyrings/xvlad.gpg >/dev/null
+curl -fsSL https://deb.xvlad.com/xvlad.sources | sudo tee /etc/apt/sources.list.d/xvlad.sources >/dev/null
+sudo apt update
+sudo apt install glissando glissando-voice   # glissando-voice is optional
+```
+
+Check the key before trusting it: `gpg --show-keys /etc/apt/keyrings/xvlad.gpg`
+must print the fingerprint `3AEF 2C40 39D6 4C00 8CBA 5F03 2850 6009 1652 C539`
+(also published at <https://deb.xvlad.com/fingerprint.txt>). The key is
+attached to this repository only through `Signed-By` and is not trusted for
+any other source. The packages themselves are downloaded from the GitHub
+releases of this project; apt checks each file against the signed index.
+
+Then make glissando the active keyboard:
+
+```bash
 sudo update-alternatives --set Phosh-OSK /usr/share/glissando/io.github.x_vlad_x.Glissando.desktop
 systemctl --user daemon-reload && systemctl --user restart mobi.phosh.OSK.service
 ```
 
-Installing does not change your keyboard by itself; the second command does.
-To go back to Stevia:
+### From downloaded packages
+
+Download the `.deb` files from the
+[releases page](https://github.com/x-vlad-x/glissando/releases) on the phone,
+then, in that directory, install them and switch as above:
+
+```bash
+sudo apt install ./glissando_*_arm64.deb ./glissando-voice_*_arm64.deb   # voice is optional
+```
+
+Installing does not change your keyboard by itself; the `update-alternatives`
+command does. To go back to Stevia:
 
 ```bash
 sudo update-alternatives --set Phosh-OSK /usr/share/phosh-osk-stevia/mobi.phosh.Stevia.desktop
@@ -112,16 +143,23 @@ or Squeekboard instead. Prefer to try it without root? See the trial mode in
 
 ## Updating
 
-Updates are installed by hand for now. Download both new packages into an
-otherwise empty directory, then, in that directory:
+With the APT repository, updates come with the rest of the system:
 
 ```bash
-sudo apt install ./glissando_*_arm64.deb ./glissando-voice_*_arm64.deb
+sudo apt update && sudo apt upgrade
 systemctl --user restart mobi.phosh.OSK.service
 ```
 
+Already installed glissando from downloaded packages? Add the repository as
+above; `sudo apt update && sudo apt upgrade` then brings the newer version.
+Without the repository, download both new packages into an otherwise empty
+directory and run `sudo apt install ./glissando_*_arm64.deb
+./glissando-voice_*_arm64.deb` there.
+
 `glissando-voice` needs the exact same version of `glissando`, so update them
-together. Your keyboard choice, settings, learned words and pinned clips stay.
+together; apt does this by itself. Your keyboard choice, settings, learned
+words and pinned clips stay. To remove the repository later:
+`sudo rm /etc/apt/sources.list.d/xvlad.sources /etc/apt/keyrings/xvlad.gpg && sudo apt update`.
 
 ## Removing
 

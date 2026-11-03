@@ -311,7 +311,7 @@ dependencies = [
 
 [[package]]
 name = "glissando"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "cairo-rs",
  "gio",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "glissando-config"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde",
  "toml",
@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "glissando-core"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "serde",
  "toml",
@@ -351,7 +351,7 @@ dependencies = [
 
 [[package]]
 name = "glissando-lang"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "glissando-config",
  "glissando-core",
@@ -360,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "glissando-settings"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "glissando-config",
  "glissando-lang",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "glissando-swipe"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "glissando-core",
  "glissando-lang",
@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "glissando-testkit"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "memmap2",
  "rustix",
@@ -391,7 +391,7 @@ dependencies = [
 
 [[package]]
 name = "glissando-voice"
-version = "0.3.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "libc",
 ]
