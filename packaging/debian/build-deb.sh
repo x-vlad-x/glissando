@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build glissando_<ver>_arm64.deb and glissando-voice_<ver>_arm64.deb into dist/.
+# Build glissando_<ver>_arm64.deb and glissando-voice_<ver>_arm64.deb into dist/,
+# where <ver> comes from deb-version.sh (for example 1.0.0~rc1-1).
 # Requires: packaging/cross/build-arm64.sh, data/dict/*.gld; for the voice
 # package also packaging/voice/build-whisper.sh and the model in .devtools/voice.
 set -euo pipefail

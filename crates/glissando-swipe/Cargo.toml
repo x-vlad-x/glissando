@@ -7,8 +7,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-glissando-core = { version = "0.3.0", path = "../glissando-core" }
-glissando-lang = { version = "0.3.0", path = "../glissando-lang" }
+glissando-core = { version = "1.0.0-rc.1", path = "../glissando-core" }
+glissando-lang = { version = "1.0.0-rc.1", path = "../glissando-lang" }
 
 [dev-dependencies]
 serde_json = "1.0.154"

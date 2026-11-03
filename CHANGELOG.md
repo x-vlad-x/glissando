@@ -1,7 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.1 – first release candidate
 
+From this candidate on, only bug fixes go into 1.0.0. The scope and the
+compatibility promise are in [docs/RELEASE-1.0.md](docs/RELEASE-1.0.md).
+
+- Packages are available from the signed APT repository at
+  <https://deb.xvlad.com>, so updates arrive with `apt upgrade` (#21)
+- The Debian version now carries a revision: this candidate is
+  `1.0.0~rc1-1`, and 1.0.0 will be `1.0.0-1`, which sorts as newer
 - The keyboard registers with gnome-session, which Phosh requires of a
   required session component. Without it, sessions started from
   `sm.puri.OSK0.desktop` failed with "Oh no! Something has gone wrong".

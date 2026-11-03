@@ -8,7 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 adw = { version = "0.9", package = "libadwaita", features = ["v1_5"] }
-glissando-config = { version = "0.3.0", path = "../glissando-config" }
-glissando-lang = { version = "0.3.0", path = "../glissando-lang" }
+glissando-config = { version = "1.0.0-rc.1", path = "../glissando-config" }
+glissando-lang = { version = "1.0.0-rc.1", path = "../glissando-lang" }
 gtk = { version = "0.11", package = "gtk4", features = ["v4_12"] }
 toml = "1.0.7"

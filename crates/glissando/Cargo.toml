@@ -11,10 +11,10 @@ cairo-rs = "0.22.9"
 gio = "0.22.10"
 glib = "0.22.10"
 glib-unix = "0.22.8"
-glissando-config = { version = "0.3.0", path = "../glissando-config" }
-glissando-core = { version = "0.3.0", path = "../glissando-core" }
-glissando-lang = { version = "0.3.0", path = "../glissando-lang" }
-glissando-swipe = { version = "0.3.0", path = "../glissando-swipe" }
+glissando-config = { version = "1.0.0-rc.1", path = "../glissando-config" }
+glissando-core = { version = "1.0.0-rc.1", path = "../glissando-core" }
+glissando-lang = { version = "1.0.0-rc.1", path = "../glissando-lang" }
+glissando-swipe = { version = "1.0.0-rc.1", path = "../glissando-swipe" }
 memmap2 = "0.9.12"
 pango = "0.22.9"
 pangocairo = "0.22.9"
