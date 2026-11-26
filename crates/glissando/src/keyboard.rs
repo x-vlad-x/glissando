@@ -509,7 +509,9 @@ impl Keyboard {
     /// Surrounding text from the client; `reply` when it answers one of our
     /// own edits.
     pub fn surrounding(&mut self, before: &str, after: &str, selection: bool, reply: bool) {
-        if self.engine.set_surrounding(before, after, selection, reply) {
+        // The shift state set on activation went by an empty text.
+        let first = !self.engine.context_known();
+        if self.engine.set_surrounding(before, after, selection, reply) || first {
             self.update_autoshift();
         }
     }
@@ -1654,6 +1656,20 @@ mod tests {
 
         kb.activate(FieldInfo::default());
         assert!(kb.touch.config.swipe_enabled);
+    }
+
+    #[test]
+    fn shift_follows_the_text_reported_with_an_activation() {
+        let mut kb = test_keyboard(&["en"]);
+        // A touch in the middle of a sentence activates the input method again.
+        kb.activate(FieldInfo::default());
+        assert_eq!(kb.shift, Shift::Once, "empty field so far");
+        kb.surrounding("Hello wor", "ld", false, false);
+        assert_eq!(kb.shift, Shift::Off);
+        // Later reports keep a shift the user set.
+        kb.set_shift(Shift::Once);
+        kb.surrounding("Hello wor", "ld", false, true);
+        assert_eq!(kb.shift, Shift::Once);
     }
 
     pub fn test_keyboard(layouts: &[&str]) -> Keyboard {

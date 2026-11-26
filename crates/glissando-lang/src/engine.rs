@@ -391,6 +391,12 @@ impl Engine {
         self.sent.push_back((self.before.clone(), self.after.clone()));
     }
 
+    /// The client has reported the text around the cursor since the focus
+    /// changed.
+    pub fn context_known(&self) -> bool {
+        self.context_known
+    }
+
     pub fn composing(&self) -> &str {
         &self.composing
     }
