@@ -8,6 +8,8 @@
   position ("Hello world foo" became "Hello wfo|d foo") or deleted only part
   of a selection. Until the app reports the text again, deletions now go out
   as key presses, which the app applies at its real cursor
+- A word reopened with backspace is no longer auto-corrected when you finish
+  it without typing new letters
 
 ## 1.0.0-rc.1 – first release candidate
 

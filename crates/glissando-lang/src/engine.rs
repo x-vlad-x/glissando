@@ -183,6 +183,9 @@ pub struct Engine {
     trust_next: bool,
     suggestions: Vec<Suggestion>,
     undo: Option<Undo>,
+    /// The composing word was reopened by backspace and has not been typed
+    /// into since: it is the user's text and is not auto-corrected.
+    reopened: bool,
     auto_space: bool,
     last_was_space: bool,
     /// Manual shift/caps state of the composing word is kept in `composing`.
@@ -224,6 +227,7 @@ impl Engine {
             trust_next: false,
             suggestions: Vec::new(),
             undo: None,
+            reopened: false,
             auto_space: false,
             last_was_space: false,
             swipe_shift: CasePattern::Lower,
@@ -276,6 +280,7 @@ impl Engine {
         self.composing.clear();
         self.inputs.clear();
         self.undo = None;
+        self.reopened = false;
         self.auto_space = false;
         self.last_was_space = false;
         self.refresh_suggestions();
@@ -646,6 +651,7 @@ impl Engine {
         }
         let typed = std::mem::take(&mut self.composing);
         self.inputs.clear();
+        let correct = correct && !std::mem::take(&mut self.reopened);
         let mut out = typed.clone();
         if correct && let Some(s) = self.suggestions.iter().find(|s| s.autocorrect) {
             out = s.text.clone();
@@ -708,6 +714,7 @@ impl Engine {
                 self.undo = None;
                 self.auto_space = false;
             }
+            self.reopened = false;
             self.composing.push(c);
             self.inputs.push(self.spatial.input_char(c, touch));
             if !self.use_preedit() {
@@ -886,6 +893,7 @@ impl Engine {
         self.kind = Composing::Typed;
         self.inputs = word.chars().map(|c| self.spatial.input_char(c, None)).collect();
         self.undo = None;
+        self.reopened = true;
         self.auto_space = false;
     }
 
@@ -1524,5 +1532,24 @@ mod tests {
         e.client_changed();
         d.apply(&e.backspace());
         assert_eq!(d.shown(), "hello", "no revert at an unknown cursor position");
+    }
+
+    #[test]
+    fn a_reopened_word_is_not_corrected() {
+        let mut e = engine();
+        let mut d = Doc::default();
+        type_str(&mut e, &mut d, "hellp");
+        d.apply(&e.commit_composing());
+        e.set_surrounding(&d.text.clone(), "", false, true);
+        type_str(&mut e, &mut d, "\u{8}");
+        assert_eq!(e.composing(), "hell");
+        type_str(&mut e, &mut d, " ");
+        assert_eq!(d.shown(), "hell ", "deleting letters is not a typo");
+        // Typing into the reopened word lets the correction work again.
+        e.set_surrounding(&d.text.clone(), "", false, true);
+        type_str(&mut e, &mut d, "\u{8}\u{8}");
+        assert_eq!(e.composing(), "hel");
+        type_str(&mut e, &mut d, "o ");
+        assert_eq!(d.shown(), "hello ");
     }
 }
