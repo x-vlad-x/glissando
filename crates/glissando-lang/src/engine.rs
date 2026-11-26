@@ -28,6 +28,8 @@ pub enum Op {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     Backspace,
+    /// Delete the word before the cursor, or the selection (Ctrl+BackSpace).
+    BackspaceWord,
     Enter,
 }
 
@@ -163,6 +165,13 @@ pub struct Engine {
     before: String,
     after: String,
     context_known: bool,
+    /// `before` and `after` match the client. GTK moves the cursor and
+    /// selects text on a touch without reporting it: it sends only a new
+    /// cursor rectangle, and the compositor repeats the old text with the
+    /// activation that follows. Until a report answers one of our edits or
+    /// shows changed text, deletions go out as key events, which the client
+    /// applies at its real cursor, never as counts from our copy.
+    context_fresh: bool,
     /// Text around the cursor after each of our recent edits, oldest first.
     /// A late surrounding-text report that matches one of them is an echo
     /// of our own typing, not an edit by the user.
@@ -209,6 +218,7 @@ impl Engine {
             before: String::new(),
             after: String::new(),
             context_known: false,
+            context_fresh: false,
             sent: VecDeque::new(),
             selection: false,
             trust_next: false,
@@ -254,6 +264,7 @@ impl Engine {
         self.before.clear();
         self.after.clear();
         self.context_known = false;
+        self.context_fresh = false;
         self.sent.clear();
         self.selection = false;
         self.trust_next = false;
@@ -270,9 +281,28 @@ impl Engine {
         self.refresh_suggestions();
     }
 
+    /// The client may have moved the cursor or selected text without
+    /// telling us: forget everything that depends on the text before the
+    /// cursor being ours.
+    fn context_stale(&mut self) {
+        self.context_fresh = false;
+        self.undo = None;
+        self.auto_space = false;
+        self.last_was_space = false;
+    }
+
+    /// The client reported a change without new surrounding text, and not
+    /// in answer to one of our edits (the compositor committing the preedit
+    /// on a touch, or a client that only moved its cursor rectangle).
+    pub fn client_changed(&mut self) {
+        self.context_stale();
+    }
+
     /// Surrounding text reported by the client; `selection` when the anchor
-    /// differs from the cursor. Returns true when the report shows an edit
-    /// or cursor move by the user rather than an echo of our own typing.
+    /// differs from the cursor; `reply` when the report answers one of our
+    /// own edits (it arrived right after we sent one). Returns true when the
+    /// report shows an edit or cursor move by the user rather than an echo
+    /// of our own typing.
     ///
     /// The client's text change cause is not consulted: Qt never sets it,
     /// so every change claims to come from the input method, and a missed
@@ -280,22 +310,37 @@ impl Engine {
     /// position ("hel" left behind, "help" typed elsewhere). The text itself
     /// is compared with what our own edits must have produced instead; late
     /// reports of earlier states are ignored.
-    pub fn set_surrounding(&mut self, before: &str, after: &str, selection: bool) -> bool {
+    ///
+    /// A report that is neither a reply nor different from what we know may
+    /// be stale: GTK does not report a cursor moved by a touch.
+    pub fn set_surrounding(&mut self, before: &str, after: &str, selection: bool, reply: bool) -> bool {
         self.selection = selection;
         if !self.context_known || std::mem::take(&mut self.trust_next) {
             self.take_context(before, after);
+            if reply {
+                self.context_fresh = true;
+            } else {
+                self.context_stale();
+            }
             return false;
         }
-        if same_before(before, &self.before) && same_after(after, &self.after) {
+        let echo = if same_before(before, &self.before) && same_after(after, &self.after) {
             if before.len() > self.before.len() {
                 self.before = keep_tail(before);
             }
             if after.len() > self.after.len() {
                 self.after = after.chars().take(CONTEXT_KEEP).collect();
             }
-            return false;
-        }
-        if self.sent.iter().any(|(b, a)| same_before(before, b) && same_after(after, a)) {
+            true
+        } else {
+            self.sent.iter().any(|(b, a)| same_before(before, b) && same_after(after, a))
+        };
+        if echo {
+            if reply {
+                self.context_fresh = true;
+            } else {
+                self.context_stale();
+            }
             return false;
         }
         // The text changed while composing. Whether the word is gone depends
@@ -306,6 +351,7 @@ impl Engine {
         // replace it ("m", then "A" instead of "ma").
         let committed = !self.composing.is_empty() && self.committed_in_place(before, after);
         self.take_context(before, after);
+        self.context_fresh = true;
         if self.composing.is_empty() || committed {
             self.drop_composing();
         }
@@ -811,8 +857,9 @@ impl Engine {
         ops
     }
 
+    /// Our copy of the text before the cursor can be used for deletions.
     fn context_ok(&self) -> bool {
-        self.context_known
+        self.context_known && self.context_fresh
     }
 
     /// Backspace with a selection deletes the selection: a plain key event,
@@ -869,6 +916,11 @@ impl Engine {
         if self.context_ok() {
             let chars = chars_for_words_back(&self.before, n);
             self.delete_before(chars, &mut ops);
+        } else if self.context_known && self.field.purpose != Purpose::Terminal {
+            // The client knows where its cursor is and what is selected.
+            for _ in 0..n {
+                ops.push(Op::Key(Key::BackspaceWord));
+            }
         } else {
             for _ in 0..n {
                 ops.push(Op::Key(Key::Backspace));
@@ -877,13 +929,17 @@ impl Engine {
         self.finish_batch(ops)
     }
 
-    /// Preview for the backspace glide: the text that would be deleted.
-    pub fn delete_preview(&self, n: u32) -> String {
+    /// Preview for the backspace glide: the text that would be deleted, if
+    /// it is known.
+    pub fn delete_preview(&self, n: u32) -> Option<String> {
+        if !self.context_ok() && self.composing.is_empty() {
+            return None;
+        }
         let mut s = self.before.clone();
         s.push_str(&self.composing);
         let chars = chars_for_words_back(&s, n);
         let start = s.len() - tail_bytes(&s, chars);
-        s[start..].to_string()
+        Some(s[start..].to_string())
     }
 
     /// A suggestion from the strip was tapped.
@@ -1139,7 +1195,7 @@ mod tests {
         );
         let mut e = Engine::new(vec![en], Settings::default());
         e.set_layout(&["en".to_string()], qwerty());
-        e.set_surrounding("", "", false);
+        e.set_surrounding("", "", false, true);
         e
     }
 
@@ -1166,6 +1222,10 @@ mod tests {
                     Op::Preedit(p) => self.preedit = p.clone(),
                     Op::Key(Key::Backspace) => {
                         self.text.pop();
+                    }
+                    Op::Key(Key::BackspaceWord) => {
+                        let keep = self.text.trim_end().trim_end_matches(|c: char| !c.is_whitespace()).len();
+                        self.text.truncate(keep);
                     }
                     Op::Key(Key::Enter) => self.text.push('\n'),
                 }
@@ -1243,11 +1303,11 @@ mod tests {
         let mut e = engine();
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "hello ");
-        assert!(!e.set_surrounding(&d.text.clone(), "", false));
+        assert!(!e.set_surrounding(&d.text.clone(), "", false, true));
         // Manual space: plain backspace removes it.
         type_str(&mut e, &mut d, "\u{8}");
         assert_eq!(d.shown(), "hello");
-        assert!(!e.set_surrounding(&d.text.clone(), "", false));
+        assert!(!e.set_surrounding(&d.text.clone(), "", false, true));
         type_str(&mut e, &mut d, "\u{8}");
         assert_eq!(d.shown(), "hell");
         assert_eq!(e.composing(), "hell");
@@ -1322,7 +1382,7 @@ mod tests {
         }
         let mut e = Engine::new(vec![ru], Settings::default());
         e.set_layout(&["ru".to_string()], SpatialModel::new(keys));
-        e.set_surrounding("", "", false);
+        e.set_surrounding("", "", false, true);
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "как де");
         assert!(!e.suggestions().iter().any(|s| s.autocorrect && s.text == "Ле"), "{:?}", e.suggestions());
@@ -1336,9 +1396,9 @@ mod tests {
         let mut e = engine();
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "good hel");
-        assert!(!e.set_surrounding("good ", "", false));
+        assert!(!e.set_surrounding("good ", "", false, true));
         assert_eq!(e.composing(), "hel");
-        assert!(e.set_surrounding("", "good hel", false), "cursor moved to the start");
+        assert!(e.set_surrounding("", "good hel", false, true), "cursor moved to the start");
         assert_eq!(e.composing(), "");
         let ops = e.text("x", None);
         assert_eq!(ops, vec![Op::Preedit("x".into())]);
@@ -1350,10 +1410,10 @@ mod tests {
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "hello wor");
         // Reports for states we already went past arrive late.
-        assert!(!e.set_surrounding("", "", false));
-        assert!(!e.set_surrounding("hello", "", false));
+        assert!(!e.set_surrounding("", "", false, true));
+        assert!(!e.set_surrounding("hello", "", false, true));
         assert_eq!(e.composing(), "wor");
-        assert!(!e.set_surrounding("hello ", "", false));
+        assert!(!e.set_surrounding("hello ", "", false, true));
         type_str(&mut e, &mut d, "ld ");
         assert_eq!(d.shown(), "hello world ");
     }
@@ -1363,9 +1423,9 @@ mod tests {
         let mut e = engine();
         let mut d = Doc::default();
         let long = "x".repeat(400) + " ";
-        e.set_surrounding(&long, "", false);
+        e.set_surrounding(&long, "", false, true);
         type_str(&mut e, &mut d, "wor");
-        assert!(!e.set_surrounding(&long[200..], "", false), "shorter window");
+        assert!(!e.set_surrounding(&long[200..], "", false, true), "shorter window");
         assert_eq!(e.composing(), "wor");
     }
 
@@ -1376,7 +1436,7 @@ mod tests {
         let mut e = engine();
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "good hel");
-        assert!(e.set_surrounding("good hel", "", false));
+        assert!(e.set_surrounding("good hel", "", false, true));
         assert_eq!(e.composing(), "");
         assert_eq!(e.text("p", None), vec![Op::Preedit("p".into())]);
     }
@@ -1387,13 +1447,13 @@ mod tests {
         // it and deletes the selection when the preedit starts.
         let mut e = engine();
         let mut d = Doc::default();
-        e.set_surrounding("ZI-Klinik für abhängiges Verhalten", "", false);
+        e.set_surrounding("ZI-Klinik für abhängiges Verhalten", "", false, true);
         type_str(&mut e, &mut d, "m");
-        assert!(e.set_surrounding("", "", false));
+        assert!(e.set_surrounding("", "", false, true));
         assert_eq!(e.composing(), "m");
         assert_eq!(e.text("a", None), vec![Op::Preedit("ma".into())]);
         // The app replaces the text around the preedit.
-        assert!(e.set_surrounding("Mannheim", "", false));
+        assert!(e.set_surrounding("Mannheim", "", false, true));
         assert_eq!(e.composing(), "ma");
     }
 
@@ -1402,10 +1462,10 @@ mod tests {
         let mut e = engine();
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "hello ");
-        assert!(!e.set_surrounding("hello ", "", true), "same text, now selected");
+        assert!(!e.set_surrounding("hello ", "", true, true), "same text, now selected");
         assert_eq!(e.backspace(), vec![Op::Preedit(String::new()), Op::Key(Key::Backspace)]);
         // Whatever the client reports next is the new context.
-        assert!(!e.set_surrounding("he", "", false));
+        assert!(!e.set_surrounding("he", "", false, true));
     }
 
     #[test]
@@ -1413,8 +1473,56 @@ mod tests {
         let mut e = engine();
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "hello world ");
-        assert_eq!(e.delete_preview(1), "world ");
+        assert_eq!(e.delete_preview(1).as_deref(), Some("world "));
         d.apply(&e.delete_words(1));
         assert_eq!(d.shown(), "hello ");
+    }
+
+    #[test]
+    fn backspace_after_an_unreported_cursor_move_is_a_key() {
+        // GTK moves the cursor on a touch without reporting it; phoc then
+        // activates the input method again with the old text.
+        let mut e = engine();
+        let mut d = Doc::default();
+        type_str(&mut e, &mut d, "hello world foo");
+        e.set_surrounding("hello world foo", "", false, true);
+        e.set_field(FieldInfo::default());
+        assert!(!e.set_surrounding("hello world foo", "", false, false));
+        assert_eq!(e.backspace(), vec![Op::Key(Key::Backspace)]);
+        // The answer shows where the cursor really is; now the word reopens.
+        assert!(e.set_surrounding("hello worl", "d foo", false, true));
+        assert!(!e.backspace().iter().any(|op| matches!(op, Op::DeleteBefore { .. })), "inside a word");
+        assert!(e.set_surrounding("hello wor", " foo", false, true));
+        let ops = e.backspace();
+        assert_eq!(ops[0], Op::DeleteBefore { chars: 3, bytes: 3 });
+        assert_eq!(e.composing(), "wo");
+    }
+
+    #[test]
+    fn unprompted_report_without_change_makes_the_context_stale() {
+        let mut e = engine();
+        let mut d = Doc::default();
+        type_str(&mut e, &mut d, "hello ");
+        e.set_surrounding("hello ", "", false, true);
+        // A cursor rectangle moved (a touch selected text or moved the cursor).
+        assert!(!e.set_surrounding("hello ", "", false, false));
+        assert_eq!(e.backspace(), vec![Op::Key(Key::Backspace)]);
+        e.client_changed();
+        assert_eq!(e.delete_preview(1), None);
+        assert_eq!(
+            e.delete_words(2),
+            vec![Op::Key(Key::BackspaceWord), Op::Key(Key::BackspaceWord), Op::Preedit(String::new())]
+        );
+    }
+
+    #[test]
+    fn a_stale_context_drops_the_correction_undo() {
+        let mut e = engine();
+        let mut d = Doc::default();
+        type_str(&mut e, &mut d, "helo ");
+        assert_eq!(d.text, "hello ");
+        e.client_changed();
+        d.apply(&e.backspace());
+        assert_eq!(d.shown(), "hello", "no revert at an unknown cursor position");
     }
 }

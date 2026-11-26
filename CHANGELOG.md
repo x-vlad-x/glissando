@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Backspace and the backspace glide no longer garble text after you move the
+  cursor or select text by touching the field. GTK does not tell the
+  keyboard about these, so the keyboard deleted letters at the old cursor
+  position ("Hello world foo" became "Hello wfo|d foo") or deleted only part
+  of a selection. Until the app reports the text again, deletions now go out
+  as key presses, which the app applies at its real cursor
+
 ## 1.0.0-rc.1 – first release candidate
 
 From this candidate on, only bug fixes go into 1.0.0. The scope and the

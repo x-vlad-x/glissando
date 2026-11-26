@@ -39,6 +39,11 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 /// glissando-trial always passes the variable on, empty unless it was set.
+/// A surrounding-text report this soon after our last edit answers it. GTK
+/// answers within about 20 ms on the FLX1s; a finger needs longer to reach
+/// the text and move the cursor.
+const REPLY_WINDOW: std::time::Duration = std::time::Duration::from_millis(150);
+
 fn debug_flag(value: Option<&std::ffi::OsStr>) -> bool {
     value.is_some_and(|v| !v.is_empty())
 }
@@ -122,6 +127,9 @@ pub struct App {
     /// Serial of the last input-method commit and how many commits used it.
     im_commit_serial: u32,
     im_commits_at_serial: u32,
+    /// When we last sent text, a deletion or a key to the client. A report
+    /// that follows soon after answers it.
+    last_edit_sent: Option<std::time::Instant>,
     vk: Option<zwp_virtual_keyboard_v1::ZwpVirtualKeyboardV1>,
     keymap: Keymap,
     keymap_sent: u64,
@@ -566,7 +574,8 @@ impl App {
 
     fn im_done(&mut self) {
         self.im_serial = self.im_serial.wrapping_add(1);
-        dlog!("im done -> serial {}", self.im_serial);
+        let reply = self.last_edit_sent.map(|t| t.elapsed() < REPLY_WINDOW).unwrap_or(false);
+        dlog!("im done -> serial {}{}", self.im_serial, if reply { "" } else { " (unprompted)" });
         let was_active = self.im_current.active;
         let p = std::mem::take(&mut self.im_pending);
         let activated = p.active && (p.activated || !was_active);
@@ -593,12 +602,18 @@ impl App {
         } else if p.active && content_changed {
             self.kb.activate(self.field_info());
         }
+        // The text sent with an activation is the client's last report, and
+        // GTK re-activates on every touch on the field after moving the
+        // cursor without reporting it.
+        let reply = reply && !activated;
         if let Some((text, cursor, anchor)) = p.surrounding {
             let c = (cursor as usize).min(text.len());
             if text.is_char_boundary(c) {
-                self.kb.surrounding(&text[..c], &text[c..], anchor != cursor);
+                self.kb.surrounding(&text[..c], &text[c..], anchor != cursor, reply);
             }
             self.im_current.surrounding = Some((text, cursor, anchor));
+        } else if p.active && !reply {
+            self.kb.client_changed();
         }
         if p.active && !activated {
             self.resend_dropped_preedit();
@@ -637,6 +652,7 @@ impl App {
         im.commit(self.im_serial);
         dlog!("im commit serial {} (preedit {} bytes, resent)", self.im_serial, self.last_preedit.len());
         self.note_im_commit();
+        self.last_edit_sent = Some(std::time::Instant::now());
     }
 
     fn send_vk_key(&mut self, key: VkKey, mods: u32) {
@@ -662,6 +678,7 @@ impl App {
         self.ensure_keymap();
         let Some(vk) = self.vk.as_ref() else { return };
         let t = self.now();
+        self.last_edit_sent = Some(std::time::Instant::now());
         if mods != 0 {
             vk.modifiers(mods, 0, 0, 0);
         }
@@ -704,6 +721,7 @@ impl App {
                         let t = self.now();
                         vk.key(t, code, 1);
                         vk.key(t, code, 0);
+                        self.last_edit_sent = Some(std::time::Instant::now());
                     }
                 }
             }
@@ -723,6 +741,7 @@ impl App {
                     }
                     Op::Preedit(_) => {}
                     Op::Key(Key::Backspace) => self.send_vk_key(VkKey::BackSpace, 0),
+                    Op::Key(Key::BackspaceWord) => self.send_vk_key(VkKey::BackSpace, MOD_CTRL),
                     Op::Key(Key::Enter) => self.send_vk_key(VkKey::Return, 0),
                 }
             }
@@ -753,6 +772,7 @@ impl App {
             app.last_preedit = p;
             im.commit(app.im_serial);
             app.note_im_commit();
+            app.last_edit_sent = Some(std::time::Instant::now());
         };
         for op in ops {
             match op {
@@ -783,6 +803,7 @@ impl App {
                     flush(self, &mut commit, &mut delete, &mut preedit);
                     match k {
                         Key::Backspace => self.send_vk_key(VkKey::BackSpace, 0),
+                        Key::BackspaceWord => self.send_vk_key(VkKey::BackSpace, MOD_CTRL),
                         Key::Enter => self.send_vk_key(VkKey::Return, 0),
                     }
                 }
@@ -1133,6 +1154,7 @@ pub fn run(opts: Options, config: Config, kb: Keyboard) -> Result<Rc<RefCell<App
         last_preedit: String::new(),
         im_commit_serial: 0,
         im_commits_at_serial: 0,
+        last_edit_sent: None,
         vk,
         keymap: Keymap::default(),
         keymap_sent: 0,
