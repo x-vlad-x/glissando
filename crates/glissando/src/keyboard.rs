@@ -506,10 +506,19 @@ impl Keyboard {
         self.actions.push(Action::Resize);
     }
 
-    pub fn surrounding(&mut self, before: &str, after: &str, selection: bool) {
-        if self.engine.set_surrounding(before, after, selection) {
+    /// Surrounding text from the client; `reply` when it answers one of our
+    /// own edits.
+    pub fn surrounding(&mut self, before: &str, after: &str, selection: bool, reply: bool) {
+        // The shift state set on activation went by an empty text.
+        let first = !self.engine.context_known();
+        if self.engine.set_surrounding(before, after, selection, reply) || first {
             self.update_autoshift();
         }
+    }
+
+    /// The client changed something we did not cause and sent no text.
+    pub fn client_changed(&mut self) {
+        self.engine.client_changed();
     }
 
     pub fn cancel_touches(&mut self) {
@@ -1303,9 +1312,15 @@ impl Keyboard {
                     self.strip_message = if words == 0 {
                         None
                     } else {
-                        let text = self.engine.delete_preview(words);
-                        let shown: String = text.chars().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect();
-                        Some((format!("⌫ {}", shown.trim()), true))
+                        let shown = match self.engine.delete_preview(words) {
+                            Some(text) => {
+                                let tail: Vec<char> = text.chars().rev().take(40).collect();
+                                tail.into_iter().rev().collect::<String>().trim().to_string()
+                            }
+                            // The cursor position is not known: show the count.
+                            None => format!("× {words}"),
+                        };
+                        Some((format!("⌫ {shown}"), true))
                     };
                     self.actions.push(Action::Haptic(Haptic::Tick));
                 }
@@ -1641,6 +1656,20 @@ mod tests {
 
         kb.activate(FieldInfo::default());
         assert!(kb.touch.config.swipe_enabled);
+    }
+
+    #[test]
+    fn shift_follows_the_text_reported_with_an_activation() {
+        let mut kb = test_keyboard(&["en"]);
+        // A touch in the middle of a sentence activates the input method again.
+        kb.activate(FieldInfo::default());
+        assert_eq!(kb.shift, Shift::Once, "empty field so far");
+        kb.surrounding("Hello wor", "ld", false, false);
+        assert_eq!(kb.shift, Shift::Off);
+        // Later reports keep a shift the user set.
+        kb.set_shift(Shift::Once);
+        kb.surrounding("Hello wor", "ld", false, true);
+        assert_eq!(kb.shift, Shift::Once);
     }
 
     pub fn test_keyboard(layouts: &[&str]) -> Keyboard {
