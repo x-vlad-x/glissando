@@ -88,7 +88,7 @@ network namespace. Details: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Install on FuriOS / Phosh
 
-The current version is the release candidate **1.0.0-rc.1**. Please report
+The current version is the release candidate **1.0.0-rc.2**. Please report
 any problem in the [issues](https://github.com/x-vlad-x/glissando/issues).
 
 ### From the APT repository (recommended)
