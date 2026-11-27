@@ -895,13 +895,7 @@ impl Keyboard {
     fn start_voice(&mut self) {
         let ops = self.engine.commit_composing();
         self.push_ops(ops);
-        let lang = self
-            .engine
-            .language_probabilities()
-            .into_iter()
-            .max_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|l| l.0)
-            .unwrap_or_else(|| "auto".into());
+        let lang = voice_language(self.engine.language_probabilities());
         self.voice = Some(VoiceUi::Listening(0.0));
         self.actions.push(Action::VoiceStart(lang));
     }
@@ -1625,8 +1619,37 @@ impl LettersLabel for Layout {
     }
 }
 
+/// The language for speech recognition: the one the typing so far points
+/// to, or `auto` while the enabled languages are about equally likely. Words
+/// known in several dictionaries do not move the detector, and the speech
+/// engine recognises the language better than an even guess.
+fn voice_language(probs: Vec<(String, f32)>) -> String {
+    const MARGIN: f32 = 0.15;
+    let mut probs = probs;
+    probs.sort_by(|a, b| b.1.total_cmp(&a.1));
+    match probs.as_slice() {
+        [] => "auto".into(),
+        [(only, _)] => only.clone(),
+        [(top, p), (_, q), ..] if p - q >= MARGIN => top.clone(),
+        _ => "auto".into(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::voice_language;
+
+    #[test]
+    fn voice_language_needs_a_clear_lead() {
+        let p = |v: &[(&str, f32)]| v.iter().map(|(l, p)| (l.to_string(), *p)).collect::<Vec<_>>();
+        // English typed words that the German dictionary also knows: no lead.
+        assert_eq!(voice_language(p(&[("en", 0.5), ("de", 0.5)])), "auto");
+        assert_eq!(voice_language(p(&[("en", 0.55), ("de", 0.45)])), "auto");
+        assert_eq!(voice_language(p(&[("en", 0.3), ("de", 0.7)])), "de");
+        assert_eq!(voice_language(p(&[("ru", 1.0)])), "ru");
+        assert_eq!(voice_language(Vec::new()), "auto");
+    }
+
     use super::*;
     use glissando_core::layout::SymbolSet;
     use glissando_lang::engine::Settings;

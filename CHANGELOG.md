@@ -11,6 +11,13 @@
   (#47)
 - Glide delete over several words in Flutter apps removes the words behind
   the word being typed too, not only that word
+- Voice typing no longer forces a language the typing has not clearly shown:
+  with English and German enabled, English speech was recognised as German.
+  The speech engine now detects the language itself until one is clearly
+  ahead, and a Russian layout still selects Russian
+- Text inserted after Enter (voice typing, emoji, clipboard) no longer starts
+  with a space in apps that do not mark their text view as multiline, such
+  as GNOME Text Editor
 - German texts in the settings app and the quick menu are reviewed: glide
   typing is now "Wischeingabe", and several labels read more naturally (#25)
 - postmarketOS is listed as not supported in 1.0: there is no APK package,
