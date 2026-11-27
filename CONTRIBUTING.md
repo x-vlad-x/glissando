@@ -25,6 +25,10 @@ and writes `data/dict/*.gld`:
 python3 tools/build-dicts.py
 ```
 
+Each release also publishes the dictionaries it shipped as
+`glissando-dicts_<version>.tar.xz`. Unpacking it into `data/dict/` gives the
+same files; their SHA-256 sums are in `SOURCES.md` inside the archive.
+
 The arm64 build and the packages are described in the
 [README](README.md#building) and [docs/DEVICE.md](docs/DEVICE.md).
 

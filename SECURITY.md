@@ -17,10 +17,12 @@ No response time is promised.
 
 ## Supported versions
 
-Fixes go to the `main` branch and ship in the next release. Only the latest
-release is supported. There are no maintenance branches for older versions.
+Fixes go to the `main` branch and ship in the next release. Fixes for the
+latest 1.0 release also go to the `1.0.x` branch and ship as a 1.0.x bug fix
+release until 1.1.0 is out. Only the latest release is supported.
 
 | Version | Supported |
 |---|---|
 | Latest release | Yes |
+| Release candidates | Until the final release |
 | Older releases | No |

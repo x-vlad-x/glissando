@@ -9,11 +9,15 @@ and what stays stable afterwards.
 | Tier | Systems | Meaning |
 |---|---|---|
 | Supported | FuriOS on the FuriPhone FLX1s | Tested before each release; bugs block the release |
-| May work | Mobian, postmarketOS, PureOS and other Phosh systems | Not verified; fixes are best effort |
+| May work | Mobian, PureOS and other Debian-based Phosh systems with systemd | Not verified; fixes are best effort |
+| Not supported | postmarketOS and other systems without Debian packages or systemd | No package; see below |
 
 A system moves to *Supported* only after someone runs the manual device
 checks and the package install, upgrade and removal cycle on it. Until then,
 documentation must not promise that it works.
+
+postmarketOS is not supported in 1.0: there is no APK package, and the
+keyboard is started by a systemd user unit that OpenRC does not run (#19).
 
 Phosh is the only supported desktop. Flatpak is not a distribution format for
 1.0: a sandboxed client cannot see the Wayland protocols a keyboard depends on.
@@ -25,6 +29,7 @@ Phosh is the only supported desktop. Flatpak is not a distribution format for
 - New languages and layouts beyond English, German and Russian
 - Partial damage rendering, unless device measurements show a battery problem
 - Flatpak packaging
+- postmarketOS packaging (APK with OpenRC startup)
 
 These can return in a later 1.x release. Bug fixes for existing features are
 always in scope.

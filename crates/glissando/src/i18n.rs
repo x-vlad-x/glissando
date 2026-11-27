@@ -34,7 +34,7 @@ pub fn tr(key: &str) -> &'static str {
         "settings" => ("Settings", "Настройки", "Einstellungen"),
         "one-handed" => ("One-handed", "Одной рукой", "Einhandmodus"),
         "number-row" => ("Number row", "Ряд цифр", "Zahlenreihe"),
-        "glide" => ("Glide typing", "Ввод свайпом", "Gleitende Eingabe"),
+        "glide" => ("Glide typing", "Ввод свайпом", "Wischeingabe"),
         "theme-system" => ("Theme: auto", "Тема: авто", "Design: auto"),
         "theme-light" => ("Theme: light", "Тема: светлая", "Design: hell"),
         "theme-dark" => ("Theme: dark", "Тема: тёмная", "Design: dunkel"),
@@ -46,7 +46,7 @@ pub fn tr(key: &str) -> &'static str {
         "clipboard-empty" => (
             "Copied text appears here. Long-press an item to pin it.",
             "Здесь появится скопированный текст. Долгое нажатие закрепляет элемент.",
-            "Kopierter Text erscheint hier. Lange drücken zum Anheften.",
+            "Kopierter Text erscheint hier. Lange auf einen Eintrag drücken, um ihn anzuheften.",
         ),
         "clipboard-off" => {
             ("Clipboard history is off.", "История буфера обмена выключена.", "Der Zwischenablage-Verlauf ist aus.")

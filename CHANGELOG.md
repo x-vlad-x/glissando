@@ -18,6 +18,13 @@
 - Text inserted after Enter (voice typing, emoji, clipboard) no longer starts
   with a space in apps that do not mark their text view as multiline, such
   as GNOME Text Editor
+- German texts in the settings app and the quick menu are reviewed: glide
+  typing is now "Wischeingabe", and several labels read more naturally (#25)
+- postmarketOS is listed as not supported in 1.0: there is no APK package,
+  and the keyboard is started by a systemd user unit (#19)
+- Release files carry a signed build attestation that
+  `gh attestation verify` checks (#16)
+- The README describes the versioning and support policy from 1.0.0 on (#32)
 
 ## 1.0.0-rc.2 – second release candidate
 
