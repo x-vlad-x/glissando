@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.2 – second release candidate
+
+Bug fixes for text editing found while testing 1.0.0-rc.1 on the FLX1s.
 
 - Backspace and the backspace glide no longer garble text after you move the
   cursor or select text by touching the field. GTK does not tell the
