@@ -186,6 +186,13 @@ pub struct Engine {
     /// The composing word was reopened by backspace and has not been typed
     /// into since: it is the user's text and is not auto-corrected.
     reopened: bool,
+    /// The client reported the composing word as text before the cursor.
+    /// Flutter keeps its preedit in the text it reports; phoc and Qt commit
+    /// the preedit in place on a touch. The report looks the same, so the
+    /// next change deletes the word before it sends the new preedit or
+    /// text: inside a Flutter preedit that removes the preedit text, after
+    /// a commit it removes the committed word.
+    shown: Option<String>,
     auto_space: bool,
     last_was_space: bool,
     /// Manual shift/caps state of the composing word is kept in `composing`.
@@ -228,6 +235,7 @@ impl Engine {
             suggestions: Vec::new(),
             undo: None,
             reopened: false,
+            shown: None,
             auto_space: false,
             last_was_space: false,
             swipe_shift: CasePattern::Lower,
@@ -236,6 +244,11 @@ impl Engine {
 
     /// Choose the languages used with the current layout and its key positions.
     pub fn set_layout(&mut self, codes: &[String], spatial: SpatialModel) -> Vec<Op> {
+        let ops = self.set_layout_ops(codes, spatial);
+        self.replace_shown(ops)
+    }
+
+    fn set_layout_ops(&mut self, codes: &[String], spatial: SpatialModel) -> Vec<Op> {
         let ops = self.commit_composing();
         self.active = codes.iter().filter_map(|c| self.langs.iter().position(|l| &l.code == c)).collect();
         self.detector.reset(self.active.len());
@@ -281,6 +294,7 @@ impl Engine {
         self.inputs.clear();
         self.undo = None;
         self.reopened = false;
+        self.shown = None;
         self.auto_space = false;
         self.last_was_space = false;
         self.refresh_suggestions();
@@ -336,6 +350,14 @@ impl Engine {
             if after.len() > self.after.len() {
                 self.after = after.chars().take(CONTEXT_KEEP).collect();
             }
+            // The word is not in the text: it is still a preedit.
+            self.shown = None;
+            true
+        } else if self.word_before_cursor(before, after) {
+            // The text without the word is what the client has once the
+            // word is deleted, and comes back as a report of that.
+            self.remember_sent();
+            self.shown = Some(self.composing.clone());
             true
         } else {
             self.sent.iter().any(|(b, a)| same_before(before, b) && same_after(after, a))
@@ -363,6 +385,28 @@ impl Engine {
         true
     }
 
+    /// Does the reported text hold the composing word right before the
+    /// cursor, where we show it as the preedit?
+    fn word_before_cursor(&self, before: &str, after: &str) -> bool {
+        if self.composing.is_empty() || !self.use_preedit() {
+            return false;
+        }
+        let expected = format!("{}{}", self.before, self.composing);
+        same_before(before, &expected) && same_after(after, &self.after)
+    }
+
+    /// Delete the reported composing word before the first change to it
+    /// (see `shown`).
+    fn replace_shown(&mut self, mut ops: Vec<Op>) -> Vec<Op> {
+        if ops.is_empty() {
+            return ops;
+        }
+        if let Some(w) = self.shown.take() {
+            ops.insert(0, Op::DeleteBefore { chars: w.chars().count(), bytes: w.len() });
+        }
+        ops
+    }
+
     /// Does the reported text hold the composing word as committed text
     /// where the cursor was?
     fn committed_in_place(&self, before: &str, after: &str) -> bool {
@@ -381,14 +425,23 @@ impl Engine {
         self.remember_sent();
     }
 
+    fn remember_with_preedit(&mut self) {
+        let before = keep_tail(&format!("{}{}", self.before, self.composing));
+        self.push_sent(before, self.after.clone());
+    }
+
     fn remember_sent(&mut self) {
-        if self.sent.back().map(|(b, a)| *b == self.before && *a == self.after).unwrap_or(false) {
+        self.push_sent(self.before.clone(), self.after.clone());
+    }
+
+    fn push_sent(&mut self, before: String, after: String) {
+        if self.sent.back().map(|(b, a)| *b == before && *a == after).unwrap_or(false) {
             return;
         }
         if self.sent.len() >= SENT_KEEP {
             self.sent.pop_front();
         }
-        self.sent.push_back((self.before.clone(), self.after.clone()));
+        self.sent.push_back((before, after));
     }
 
     /// The client has reported the text around the cursor since the focus
@@ -469,6 +522,8 @@ impl Engine {
 
     fn finish_batch(&mut self, mut ops: Vec<Op>) -> Vec<Op> {
         if self.use_preedit() && !self.composing.is_empty() {
+            // A client that keeps the preedit in its text reports this.
+            self.remember_with_preedit();
             ops.push(Op::Preedit(self.composing.clone()));
         } else if self.use_preedit() {
             ops.push(Op::Preedit(String::new()));
@@ -627,6 +682,11 @@ impl Engine {
 
     /// Commit the composing word as is (cursor moves, layout switches...).
     pub fn commit_composing(&mut self) -> Vec<Op> {
+        let ops = self.commit_composing_ops();
+        self.replace_shown(ops)
+    }
+
+    fn commit_composing_ops(&mut self) -> Vec<Op> {
         let mut ops = Vec::new();
         if !self.composing.is_empty() {
             let w = std::mem::take(&mut self.composing);
@@ -682,6 +742,11 @@ impl Engine {
 
     /// Insert text verbatim (emoji, clipboard): finishes the composing word first.
     pub fn insert_raw(&mut self, text: &str) -> Vec<Op> {
+        let ops = self.insert_raw_ops(text);
+        self.replace_shown(ops)
+    }
+
+    fn insert_raw_ops(&mut self, text: &str) -> Vec<Op> {
         let mut ops = self.commit_composing();
         // commit_composing ends with a preedit reset; append after it.
         self.commit(text, &mut ops);
@@ -695,6 +760,11 @@ impl Engine {
     /// A text key was tapped. `text` is already cased; `touch` is the touch
     /// point in key units for the spatial model.
     pub fn text(&mut self, text: &str, touch: Option<(f32, f32)>) -> Vec<Op> {
+        let ops = self.text_ops(text, touch);
+        self.replace_shown(ops)
+    }
+
+    fn text_ops(&mut self, text: &str, touch: Option<(f32, f32)>) -> Vec<Op> {
         let mut ops = Vec::new();
         self.last_was_space = false;
         let mut chars = text.chars();
@@ -756,6 +826,11 @@ impl Engine {
     }
 
     pub fn space(&mut self) -> Vec<Op> {
+        let ops = self.space_ops();
+        self.replace_shown(ops)
+    }
+
+    fn space_ops(&mut self) -> Vec<Op> {
         let mut ops = Vec::new();
         let correct = self.settings.autocorrect && self.field.wants_correction() && self.kind == Composing::Typed;
         let had_word = self.finish_word(correct, &mut ops).is_some();
@@ -785,6 +860,11 @@ impl Engine {
     }
 
     pub fn enter(&mut self) -> Vec<Op> {
+        let ops = self.enter_ops();
+        self.replace_shown(ops)
+    }
+
+    fn enter_ops(&mut self) -> Vec<Op> {
         let mut ops = Vec::new();
         self.finish_word(false, &mut ops);
         self.undo = None;
@@ -802,6 +882,11 @@ impl Engine {
     }
 
     pub fn backspace(&mut self) -> Vec<Op> {
+        let ops = self.backspace_ops();
+        self.replace_shown(ops)
+    }
+
+    fn backspace_ops(&mut self) -> Vec<Op> {
         let mut ops = Vec::new();
         self.last_was_space = false;
         if self.selection && self.composing.is_empty() {
@@ -905,6 +990,11 @@ impl Engine {
 
     /// Delete `n` words before the cursor (backspace glide).
     pub fn delete_words(&mut self, n: u32) -> Vec<Op> {
+        let ops = self.delete_words_ops(n);
+        self.replace_shown(ops)
+    }
+
+    fn delete_words_ops(&mut self, n: u32) -> Vec<Op> {
         let mut ops = Vec::new();
         if self.selection && self.composing.is_empty() {
             return self.delete_selection();
@@ -918,6 +1008,11 @@ impl Engine {
             }
             if n <= 1 {
                 return self.finish_batch(ops);
+            }
+            if self.use_preedit() {
+                // Remove the preedit before deleting what precedes it:
+                // Flutter deletes only inside a preedit while one is shown.
+                ops.push(Op::Preedit(String::new()));
             }
             return self.delete_words_known(n - 1, ops);
         }
@@ -958,6 +1053,11 @@ impl Engine {
 
     /// A suggestion from the strip was tapped.
     pub fn pick(&mut self, idx: usize) -> Vec<Op> {
+        let ops = self.pick_ops(idx);
+        self.replace_shown(ops)
+    }
+
+    fn pick_ops(&mut self, idx: usize) -> Vec<Op> {
         let mut ops = Vec::new();
         let Some(s) = self.suggestions.get(idx).cloned() else { return ops };
         let space = self.settings.autospace && !matches!(self.field.purpose, Purpose::Url | Purpose::Email);
@@ -998,6 +1098,11 @@ impl Engine {
     /// Result of a glide. `cands` are words ranked best first. `shift`
     /// is the case pattern requested by the shift key.
     pub fn swipe(&mut self, cands: Vec<String>, shift: CasePattern) -> Vec<Op> {
+        let ops = self.swipe_ops(cands, shift);
+        self.replace_shown(ops)
+    }
+
+    fn swipe_ops(&mut self, cands: Vec<String>, shift: CasePattern) -> Vec<Op> {
         let mut ops = Vec::new();
         if cands.is_empty() {
             return ops;
@@ -1444,15 +1549,161 @@ mod tests {
     }
 
     #[test]
-    fn preedit_committed_by_the_compositor_ends_the_word() {
+    fn preedit_committed_by_the_compositor_is_replaced() {
         // phoc commits the preedit when the client is touched (the map
         // next to a search field) without telling the input method.
         let mut e = engine();
         let mut d = Doc::default();
         type_str(&mut e, &mut d, "good hel");
-        assert!(e.set_surrounding("good hel", "", false, true));
-        assert_eq!(e.composing(), "");
-        assert_eq!(e.text("p", None), vec![Op::Preedit("p".into())]);
+        d.text.push_str(&std::mem::take(&mut d.preedit));
+        assert!(!e.set_surrounding("good hel", "", false, false));
+        assert_eq!(e.composing(), "hel");
+        let ops = e.text("p", None);
+        assert_eq!(ops, vec![Op::DeleteBefore { chars: 3, bytes: 3 }, Op::Preedit("help".into())]);
+        d.apply(&ops);
+        assert_eq!((d.text.as_str(), d.preedit.as_str()), ("good ", "help"));
+        // The word is a preedit again.
+        assert!(!e.set_surrounding("good ", "", false, true));
+        assert_eq!(e.text("s", None), vec![Op::Preedit("helps".into())]);
+    }
+
+    /// A Flutter text field on GTK 3: the preedit is part of the text and
+    /// deletions while it is shown stay inside it. GTK reports right after
+    /// a deletion and then not again for the same update.
+    #[derive(Default)]
+    struct FlutterDoc {
+        text: String,
+        /// Start of the preedit; it runs to the end of `text`.
+        composing: Option<usize>,
+    }
+
+    impl FlutterDoc {
+        /// Apply one batch; returns the texts GTK reports.
+        fn apply(&mut self, ops: &[Op]) -> Vec<String> {
+            let mut reports = Vec::new();
+            for op in ops {
+                match op {
+                    Op::DeleteBefore { bytes, .. } => {
+                        let chars = self.text[self.text.len() - bytes..].chars().count();
+                        let lo = self.composing.unwrap_or(0);
+                        let n = chars.min(self.text[lo..].chars().count());
+                        let keep = self.text.len() - tail_bytes(&self.text, n);
+                        self.text.truncate(keep);
+                        reports.push(self.text.clone());
+                    }
+                    Op::Commit(s) => {
+                        if let Some(st) = self.composing {
+                            self.text.truncate(st);
+                        }
+                        self.text.push_str(s);
+                        if self.composing.is_some() {
+                            self.composing = Some(self.text.len());
+                        }
+                    }
+                    Op::Preedit(p) => {
+                        let st = self.composing.unwrap_or(self.text.len());
+                        self.text.truncate(st);
+                        self.text.push_str(p);
+                        self.composing = if p.is_empty() { None } else { Some(st) };
+                    }
+                    Op::Key(Key::Backspace) => {
+                        self.composing = None;
+                        self.text.pop();
+                    }
+                    Op::Key(k) => panic!("unexpected key {k:?}"),
+                }
+            }
+            if reports.is_empty() && !ops.is_empty() {
+                reports.push(self.text.clone());
+            }
+            reports
+        }
+
+        fn preedit(&self) -> &str {
+            self.composing.map(|st| &self.text[st..]).unwrap_or("")
+        }
+    }
+
+    fn flutter_type(e: &mut Engine, d: &mut FlutterDoc, s: &str) {
+        for c in s.chars() {
+            let ops = match c {
+                ' ' => e.space(),
+                '\u{8}' => e.backspace(),
+                c => e.text(&c.to_string(), None),
+            };
+            for r in d.apply(&ops) {
+                e.set_surrounding(&r, "", false, true);
+            }
+        }
+    }
+
+    #[test]
+    fn flutter_keeps_the_preedit_in_its_text() {
+        // #47: the second letter of every word replaced the first.
+        let mut e = engine();
+        let mut d = FlutterDoc::default();
+        flutter_type(&mut e, &mut d, "good mor");
+        assert_eq!((d.text.as_str(), d.preedit()), ("good mor", "mor"));
+        assert_eq!(e.composing(), "mor");
+        flutter_type(&mut e, &mut d, "\u{8}\u{8}");
+        assert_eq!((d.text.as_str(), d.preedit()), ("good m", "m"));
+        flutter_type(&mut e, &mut d, "orning ");
+        assert_eq!((d.text.as_str(), d.preedit()), ("good morning ", ""));
+        assert_eq!(e.before(), "good morning ");
+        // Auto-correction replaces the preedit, not the text before it.
+        flutter_type(&mut e, &mut d, "helo ");
+        assert_eq!(d.text, "good morning hello ");
+        assert_eq!(e.before(), "good morning hello ");
+        // Backspace reverts the correction and reopens the word.
+        flutter_type(&mut e, &mut d, "\u{8}");
+        assert_eq!((d.text.as_str(), d.preedit()), ("good morning helo", "helo"));
+    }
+
+    #[test]
+    fn flutter_reports_may_arrive_late() {
+        let mut e = engine();
+        let mut d = FlutterDoc::default();
+        let mut reports = Vec::new();
+        for c in "good wor".chars() {
+            let ops = if c == ' ' { e.space() } else { e.text(&c.to_string(), None) };
+            reports.extend(d.apply(&ops));
+        }
+        assert_eq!(d.text, "good wor");
+        for r in reports {
+            e.set_surrounding(&r, "", false, true);
+        }
+        assert_eq!(e.composing(), "wor");
+        assert_eq!(e.before(), "good ");
+        flutter_type(&mut e, &mut d, "ld ");
+        assert_eq!(d.text, "good world ");
+        assert_eq!(e.before(), "good world ");
+    }
+
+    #[test]
+    fn flutter_deletes_words_behind_the_preedit() {
+        let mut e = engine();
+        let mut d = FlutterDoc::default();
+        flutter_type(&mut e, &mut d, "hello good wor");
+        assert_eq!(e.delete_preview(2).as_deref(), Some("good wor"));
+        for r in d.apply(&e.delete_words(2)) {
+            e.set_surrounding(&r, "", false, true);
+        }
+        assert_eq!((d.text.as_str(), d.preedit()), ("hello ", ""));
+        assert_eq!(e.before(), "hello ");
+    }
+
+    #[test]
+    fn flutter_cyrillic_words() {
+        let ru = Language::new("ru", Some(test_dict(&[("привет", 200), ("мир", 190)], &[])), UserModel::in_memory());
+        let mut e = Engine::new(vec![ru], Settings::default());
+        e.set_layout(&["ru".to_string()], SpatialModel::default());
+        e.set_surrounding("", "", false, true);
+        let mut d = FlutterDoc::default();
+        flutter_type(&mut e, &mut d, "привет мир");
+        assert_eq!((d.text.as_str(), d.preedit()), ("привет мир", "мир"));
+        flutter_type(&mut e, &mut d, " ");
+        assert_eq!(d.text, "привет мир ");
+        assert_eq!(e.before(), "привет мир ");
     }
 
     #[test]
