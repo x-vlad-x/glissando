@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.3 – third release candidate
+
+Fixes found with 1.0.0-rc.2, among them typing in Flutter apps, and the
+results of the device checks on the FLX1s with phoc 0.58 and GTK 4.24.
 
 - Typing works in Flutter apps such as FluffyChat and Flexify. Flutter
   includes the word being typed in the text it reports back to the keyboard,
