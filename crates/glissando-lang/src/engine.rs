@@ -874,8 +874,13 @@ impl Engine {
             ops.push(Op::Preedit(String::new()));
         }
         ops.push(Op::Key(Key::Enter));
-        if self.field.multiline {
-            self.note_commit("\n");
+        // What follows starts a line either way: in a multiline field after
+        // the new line, in a single-line one after the field is submitted.
+        // GTK 4 text views do not send the multiline hint, so the hint only
+        // decides whether our copy of the text can still be trusted.
+        self.note_commit("\n");
+        if !self.field.multiline {
+            self.context_stale();
         }
         self.refresh_suggestions();
         ops
@@ -1789,6 +1794,20 @@ mod tests {
         e.client_changed();
         d.apply(&e.backspace());
         assert_eq!(d.shown(), "hello", "no revert at an unknown cursor position");
+    }
+
+    #[test]
+    fn enter_starts_a_line_without_the_multiline_hint() {
+        // GTK 4 text views do not send the multiline hint. Text inserted
+        // after Enter (voice typing) must not start with a space.
+        let mut e = engine();
+        let mut d = Doc::default();
+        type_str(&mut e, &mut d, "hello\n");
+        assert!(e.before().ends_with('\n'));
+        assert!(e.autocap());
+        // The context may be wrong in a single-line field: deletions go out
+        // as keys until the client reports again.
+        assert_eq!(e.delete_words(1), vec![Op::Key(Key::BackspaceWord), Op::Preedit(String::new())]);
     }
 
     #[test]
