@@ -203,6 +203,9 @@ rm -r ~/.config/glissando ~/.local/share/glissando ~/.local/state/glissando
 - The launcher's fallback only knows Stevia and Squeekboard.
 - Keeping the keyboard closed in chosen apps needs a compositor with
   wlr-foreign-toplevel.
+- In Qt multi-line text fields (`QTextEdit`) backspace does not undo an
+  auto-correction: Qt does not send the text around the cursor there in a way
+  phoc forwards. Typing and deleting work.
 
 ## Versions and support
 

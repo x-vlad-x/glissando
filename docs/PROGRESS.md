@@ -29,25 +29,20 @@ reports `SKIP` in CI.
 * Debian packages with a non-default Phosh-OSK alternative: install, upgrade
   from 0.3.0, switching, removal and installing again (#10)
 * Fallback to the system keyboard after three crashes (#9)
+* Manual checks on the FLX1s with phoc 0.58 and GTK 4.24: GTK 4, Qt 6,
+  Firefox, Chromium, Electron, terminal, voice, lock screen, rotation (#7, #8)
+* Performance: start, touch latency, memory and CPU (#22)
+* Updates from the signed APT repository (#21)
 
 ## In the repository, not yet proven on a device
 
 * Release workflow for arm64 packages, triggered by a `v*` tag
-* Updates through the signed APT repository at <https://deb.xvlad.com>,
-  starting with 1.0.0-rc.1 (#21)
 
 ## Open before 1.0.0
 
-* Manual device checks on the FLX1s: Qt and Chromium apps, live speech,
-  terminals, password fields, rotation, login, suspend (#8)
-* Text input against newer GTK and phoc (#7)
-* Performance measurements on the device (#22)
-* Published dictionary artifact for CI (#14)
-* Signed release artifacts, and a release workflow run against a real tag (#16)
-* Translation review (#25)
-* Decision on postmarketOS packaging (#19)
-* Release candidate and public test period (#29, #30), then the release (#31)
-  and maintenance setup (#32)
+* Logout and login with the candidate, and an external display (#8)
+* Public test period for the release candidate (#30), then the release (#31)
+  and the `1.0.x` branch (#32)
 
 ## Later
 
