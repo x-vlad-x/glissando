@@ -9,7 +9,7 @@ mkdir -p "$dest/pkgs" "$dest/root"
 for pkg in sway grim wtype; do
     url="$(pacman -Sp "$pkg" | tail -1)"
     file="$dest/pkgs/$(basename "$url")"
-    [ -f "$file" ] || curl -sfL -o "$file" "$url"
+    [ -f "$file" ] || curl -sfL --retry 6 --retry-all-errors --retry-delay 20 --connect-timeout 30 --speed-limit 1 --speed-time 60 -o "$file" "$url"
     name="$(basename "$file")"
     want=""
     for db in /var/lib/pacman/sync/*.db; do

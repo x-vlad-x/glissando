@@ -77,14 +77,46 @@ jobs:
     env:
       ARCH_SNAPSHOT: 2026/10/25
     steps:
+      # archive.archlinux.org is the only source for a dated snapshot and
+      # sometimes stalls for minutes. The packages of a snapshot never
+      # change, so they are cached. A run that had to download something
+      # saves a new cache entry; the next runs restore the newest one.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: pacman-cache
+        with:
+          path: /var/cache/pacman/pkg
+          key: pacman-${{ env.ARCH_SNAPSHOT }}-${{ github.run_id }}
+          restore-keys: pacman-${{ env.ARCH_SNAPSHOT }}-
       - name: Install system packages
+        id: install
         run: |
+          before="$(ls /var/cache/pacman/pkg | wc -l)"
           echo "Server=https://archive.archlinux.org/repos/$ARCH_SNAPSHOT/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
-          pacman -Syyuu --noconfirm
-          pacman -S --noconfirm --needed git rust python python-gobject dbus iproute2 gtk4 libadwaita
+          # Fewer parallel downloads are gentler on the archive.
+          sed -i 's/^#\?ParallelDownloads.*/ParallelDownloads = 2/' /etc/pacman.conf
+          # A stalled download fails the whole transaction; files that did
+          # arrive stay in the cache, so a retry fetches only the rest.
+          retry() {
+            for i in 1 2 3 4 5 6; do
+              "$@" && return 0
+              echo "attempt $i failed, retrying in $((i * 20)) s" >&2
+              sleep $((i * 20))
+            done
+            return 1
+          }
+          retry pacman -Syyuu --noconfirm
+          retry pacman -S --noconfirm --needed git rust python python-gobject dbus iproute2 gtk4 libadwaita
           # Runtime libraries of the binaries that fetch-sway.sh unpacks.
-          pacman -Si sway grim wtype | sed -n 's/^Depends On *: //p' | tr -s ' ' '\n' \
-            | grep -vx None | xargs pacman -S --noconfirm --needed
+          deps="$(pacman -Si sway grim wtype | sed -n 's/^Depends On *: //p' | tr -s ' ' '\n' | grep -vx None)"
+          retry pacman -S --noconfirm --needed $deps
+          after="$(ls /var/cache/pacman/pkg | wc -l)"
+          [ "$after" = "$before" ] || echo "downloaded=true" >> "$GITHUB_OUTPUT"
+      # Saved right away, so that a later failing step does not lose it.
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.install.outputs.downloaded == 'true'
+        with:
+          path: /var/cache/pacman/pkg
+          key: pacman-${{ env.ARCH_SNAPSHOT }}-${{ github.run_id }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
