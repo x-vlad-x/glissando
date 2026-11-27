@@ -5,7 +5,9 @@
 //!   toolkit: it applies preedit/commit/delete events, reports surrounding
 //!   text and also accepts virtual keyboard keys. A click commits the
 //!   preedit where it is and puts the cursor at the start. With `--toolkit
-//!   qt` it never sets the text change cause, like Qt. Keys pressed with
+//!   qt` it never sets the text change cause, like Qt; with `--toolkit
+//!   flutter` it keeps the preedit in its text like a Flutter app on GTK 3
+//!   (see [`Flutter`]). Keys pressed with
 //!   Ctrl/Alt are written into the text as `<C-c>`, `<A-Left>`. With
 //!   `--text` the field starts with that text selected the way GTK selects a
 //!   focused search field: the selection is not reported and is deleted when
@@ -60,9 +62,133 @@ struct Client {
     width: i32,
     height: i32,
     events: u64,
+    /// `--toolkit flutter`: the field behaves like a Flutter app on GTK 3.
+    flutter: Option<Flutter>,
+}
+
+/// A Flutter text field behind the GTK 3 Wayland input module, as in
+/// `fl_text_input_handler.cc`, `text_input_model.cc` and GTK's `imwayland.c`.
+/// The preedit is part of the text, as the composing range, and the reported
+/// surrounding text includes it. Deletions while composing stay inside the
+/// composing range. GTK converts deletion lengths from bytes to characters
+/// with the last text it reported, and after applying a deletion it reports
+/// at once and then skips the report at the end of the same `done`. Keys are
+/// handled by the framework, which reports nothing to the input method.
+#[derive(Default)]
+struct Flutter {
+    composing: bool,
+    /// Byte range of the composing text in `Client::text`.
+    range: (usize, usize),
+    /// The preedit GTK holds (`current_preedit`), `None` when there is none.
+    preedit: Option<String>,
+    /// The text and cursor GTK last reported.
+    reported: (String, usize),
+}
+
+fn char_back(text: &str, pos: usize) -> usize {
+    text[..pos].chars().last().map(|c| pos - c.len_utf8()).unwrap_or(pos)
+}
+
+fn char_fwd(text: &str, pos: usize) -> usize {
+    text[pos..].chars().next().map(|c| pos + c.len_utf8()).unwrap_or(pos)
 }
 
 impl Client {
+    /// GTK's `text_input_done` with Flutter's signal handlers.
+    fn flutter_done(&mut self, p: Pending) {
+        let mut f = self.flutter.take().unwrap();
+        let pending_preedit = p.preedit.map(|(t, _, _)| t).filter(|t| !t.is_empty());
+        let update_im = p.commit.is_some() || pending_preedit != f.preedit;
+        let mut reported = false;
+        if let Some((before, after)) = p.delete {
+            // Bytes to characters, measured in the text GTK reported last.
+            let (rt, rc) = &f.reported;
+            let rc = (*rc).min(rt.len());
+            let from = rc.saturating_sub(before as usize);
+            let to = (rc + after as usize).min(rt.len());
+            let nb = if rt.is_char_boundary(from) { rt[from..rc].chars().count() } else { before as usize };
+            let na = if rt.is_char_boundary(to) { rt[rc..to].chars().count() } else { after as usize };
+            if nb + na > 0 {
+                // TextInputModel::DeleteSurrounding(-nb, nb + na)
+                let (lo, hi) = if f.composing { f.range } else { (0, self.text.len()) };
+                let mut start = self.cursor;
+                let mut count = nb + na;
+                for i in 0..nb {
+                    if start <= lo {
+                        count = i;
+                        break;
+                    }
+                    start = char_back(&self.text, start);
+                }
+                let mut end = start;
+                for _ in 0..count {
+                    if end >= hi {
+                        break;
+                    }
+                    end = char_fwd(&self.text, end);
+                }
+                if end > start {
+                    self.text.replace_range(start..end, "");
+                    self.cursor = start;
+                    if f.composing {
+                        f.range.1 -= end - start;
+                    }
+                }
+                self.flutter = Some(f);
+                self.flutter_report();
+                f = self.flutter.take().unwrap();
+                reported = true;
+            }
+        }
+        if let Some(c) = p.commit {
+            // AddText, then CommitComposing.
+            if f.composing {
+                self.text.replace_range(f.range.0..f.range.1, "");
+                self.cursor = f.range.0;
+            }
+            self.text.insert_str(self.cursor, &c);
+            self.cursor += c.len();
+            if f.composing {
+                f.range = (self.cursor, self.cursor);
+            }
+        }
+        if pending_preedit.is_some() || f.preedit.is_some() {
+            let state_change = pending_preedit.is_none() != f.preedit.is_none();
+            if state_change && f.preedit.is_none() {
+                f.composing = true;
+                f.range = (self.cursor, self.cursor);
+            }
+            f.preedit = pending_preedit;
+            // UpdateComposingText; the cursor goes to the end of the preedit.
+            let t = f.preedit.clone().unwrap_or_default();
+            if !(t.is_empty() && f.range.0 == f.range.1) {
+                let (s, e) = if f.range.0 == f.range.1 { (self.cursor, self.cursor) } else { f.range };
+                self.text.replace_range(s..e, &t);
+                f.range = (s, s + t.len());
+                self.cursor = f.range.1;
+            }
+            if state_change && f.preedit.is_none() {
+                f.composing = false;
+                f.range = (0, 0);
+            }
+        }
+        self.preedit = if f.composing { self.text[f.range.0..f.range.1].to_string() } else { String::new() };
+        self.flutter = Some(f);
+        self.write_state();
+        if update_im && !reported {
+            self.flutter_report();
+        }
+    }
+
+    /// GTK's `notify_im_change`: Flutter answers `retrieve-surrounding` with
+    /// its whole text, preedit included.
+    fn flutter_report(&mut self) {
+        if let Some(f) = &mut self.flutter {
+            f.reported = (self.text.clone(), self.cursor);
+        }
+        self.send_state();
+    }
+
     fn write_state(&mut self) {
         self.events += 1;
         let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n");
@@ -189,6 +315,10 @@ impl Client {
         }
         self.preedit.clear();
         self.write_state();
+        if self.flutter.is_some() {
+            // The framework handles keys and tells only the engine.
+            return;
+        }
         self.external_change();
     }
 
@@ -371,7 +501,11 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Client {
             wl_keyboard::Event::Enter { .. } => {
                 if let Some(ti) = &c.ti {
                     ti.enable();
-                    c.send_state();
+                    if c.flutter.is_some() {
+                        c.flutter_report();
+                    } else {
+                        c.send_state();
+                    }
                 }
             }
             wl_keyboard::Event::Modifiers { mods_depressed, .. } => c.mods = mods_depressed,
@@ -411,7 +545,12 @@ impl Dispatch<zwp_text_input_v3::ZwpTextInputV3, ()> for Client {
                 {
                     ti.set_text_change_cause(zwp_text_input_v3::ChangeCause::InputMethod);
                 }
-                c.apply_done();
+                if c.flutter.is_some() {
+                    let p = std::mem::take(&mut c.pending);
+                    c.flutter_done(p);
+                } else {
+                    c.apply_done();
+                }
             }
             _ => {}
         }
@@ -423,6 +562,7 @@ fn textclient(args: &[String]) {
     let mut hint = zwp_text_input_v3::ContentHint::empty();
     let mut state_file = None;
     let mut send_cause = true;
+    let mut flutter = None;
     let mut app_id = "glissando-textclient".to_string();
     let mut text = String::new();
     let mut i = 0;
@@ -459,6 +599,9 @@ fn textclient(args: &[String]) {
             "--toolkit" => {
                 i += 1;
                 send_cause = args[i] != "qt";
+                if args[i] == "flutter" {
+                    flutter = Some(Flutter::default());
+                }
             }
             "--app-id" => {
                 i += 1;
@@ -510,6 +653,7 @@ fn textclient(args: &[String]) {
         width: 300,
         height: 200,
         events: 0,
+        flutter,
     };
     let _ = &c.xdg_surface;
     c.write_state();
