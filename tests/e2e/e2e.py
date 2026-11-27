@@ -316,6 +316,47 @@ typing_over_a_selected_search.text = "ZI-Klinik"
 
 
 @test
+def typing_in_flutter(s):
+    # Flutter keeps the preedit in its text and reports it back; before
+    # the fix each letter after the first replaced the one before (#47).
+    s.type("hello")
+    s.wait(lambda: s.state()["text"] == "Hello" and s.state()["preedit"] == "Hello", "Hello composed")
+    s.type(" wor")
+    s.wait(lambda: s.state()["text"] == "Hello wor" and s.state()["preedit"] == "wor", "second word composed")
+    s.tap("{backspace}")
+    s.wait(lambda: s.state()["text"] == "Hello wo", "backspace in the word")
+    s.type("rld ")
+    s.wait(lambda: s.state()["text"] == "Hello world " and s.state()["preedit"] == "", "words committed")
+    s.type("morninf ")
+    s.wait(lambda: s.state()["text"] == "Hello world morning ", "corrected word replaces the typed one")
+    s.tap("{backspace}")
+    s.wait(lambda: s.state()["text"] == "Hello world morninf" and s.state()["preedit"] == "morninf",
+           "backspace reverts the correction")
+typing_in_flutter.toolkit = "flutter"
+
+
+@test
+def glide_and_glide_delete_in_flutter(s):
+    pts = []
+    for ch in "hello":
+        x, y = s.key_pos(ch)
+        pts += [x, y]
+    pts_s = " ".join(f"{v:.1f}" for v in pts)
+    s.pointer(f"swipe 450 {pts_s}")
+    s.wait(lambda: s.state()["text"] == "Hello" and s.state()["preedit"] == "Hello", "glided word", timeout=8)
+    s.type("we go wor")
+    s.wait(lambda: s.state()["text"] == "Hello we go wor" and s.state()["preedit"] == "wor", "typed after the glide")
+    bx, by = s.key_pos("{backspace}")
+    s.pointer(f"swipe 400 {bx} {by} {bx-90} {by}")
+    # Flutter deletes only inside a shown preedit: the words behind it must
+    # go too, not just the preedit.
+    s.wait(lambda: s.state()["text"] in ("Hello we ", "Hello "), "glide delete removed the words")
+    s.type("go ")
+    s.wait(lambda: s.state()["text"] in ("Hello we go ", "Hello go "), "typing goes on")
+glide_and_glide_delete_in_flutter.toolkit = "flutter"
+
+
+@test
 def terminal_keys(s):
     s.wait(lambda: any(k["key"] == "{ctrl}" for k in s.geometry()), "terminal row")
     s.type("ls")
@@ -534,6 +575,20 @@ def switch_to_russian_and_type(s):
     s.type("привет ")
     s.wait(lambda: s.state()["text"] == "Привет ", "russian text")
     s.screenshot("russian")
+
+
+@test
+@multi
+def russian_in_flutter(s):
+    s.tap("{lang}")
+    s.wait(lambda: any(k["key"] == "й" for k in s.geometry()), "russian layout")
+    s.type("привет мир")
+    s.wait(lambda: s.state()["text"] == "Привет мир" and s.state()["preedit"] == "мир", "russian words composed")
+    s.tap("{backspace}")
+    s.wait(lambda: s.state()["text"] == "Привет ми", "backspace in a russian word")
+    s.type("р ")
+    s.wait(lambda: s.state()["text"] == "Привет мир " and s.state()["preedit"] == "", "russian text")
+russian_in_flutter.toolkit = "flutter"
 
 
 @test

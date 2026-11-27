@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Typing works in Flutter apps such as FluffyChat and Flexify. Flutter
+  includes the word being typed in the text it reports back to the keyboard,
+  which the keyboard took as the word already finished: every letter after
+  the first then replaced the one before. The keyboard now replaces the
+  reported word itself, which also covers phoc and Qt finishing the word on
+  a touch. Thanks to [@nico359](https://github.com/nico359) for the report
+  (#47)
+- Glide delete over several words in Flutter apps removes the words behind
+  the word being typed too, not only that word
+
 ## 1.0.0-rc.2 – second release candidate
 
 Bug fixes for text editing found while testing 1.0.0-rc.1 on the FLX1s.
