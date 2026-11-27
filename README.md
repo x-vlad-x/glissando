@@ -24,12 +24,18 @@ telemetry, no accounts, no cloud.
 | Tier | Systems | Meaning |
 |---|---|---|
 | Supported | FuriOS on the FuriPhone FLX1s | Tested before each release; bugs block the release |
-| May work | Mobian, postmarketOS, PureOS and other Phosh systems | Not verified; fixes are best effort |
+| May work | Mobian, PureOS and other Debian-based Phosh systems with systemd | Not verified; fixes are best effort |
+| Not supported | postmarketOS and other systems without Debian packages or systemd | No package; see below |
 
 A system moves to *Supported* only after someone runs the manual device checks
 and the package install, upgrade and removal cycle on it. Phosh is the only
 supported desktop. Open release work is listed in
 [docs/PROGRESS.md](docs/PROGRESS.md).
+
+postmarketOS is not a target for 1.0: glissando ships only Debian packages,
+and the keyboard is started by a systemd user unit that OpenRC does not run.
+An APK package with OpenRC startup can come in a later 1.x release once
+someone can run the device checks on it (#19).
 
 | | | |
 |:-:|:-:|:-:|
@@ -129,6 +135,12 @@ then, in that directory, install them and switch as above:
 sudo apt install ./glissando_*_arm64.deb ./glissando-voice_*_arm64.deb   # voice is optional
 ```
 
+To check the files first, compare them with `SHA256SUMS` from the same
+release (`sha256sum -c --ignore-missing SHA256SUMS`). From 1.0.0 on, each
+file also carries a signed build attestation; with the GitHub CLI,
+`gh attestation verify glissando_*_arm64.deb -R x-vlad-x/glissando` confirms it
+was built by the release workflow from the tagged commit.
+
 Installing does not change your keyboard by itself; the `update-alternatives`
 command does. To go back to Stevia:
 
@@ -192,6 +204,24 @@ rm -r ~/.config/glissando ~/.local/share/glissando ~/.local/state/glissando
 - Keeping the keyboard closed in chosen apps needs a compositor with
   wlr-foreign-toplevel.
 
+## Versions and support
+
+From 1.0.0, glissando follows [Semantic Versioning](https://semver.org):
+
+- **1.0.x** releases fix bugs only. They come from the `1.0.x` branch and
+  never change behaviour you rely on.
+- **1.x** releases may add features and settings. Configuration, personal
+  data, dictionaries, package names and the command line stay compatible
+  across all of 1.x, as described in
+  [docs/RELEASE-1.0.md](docs/RELEASE-1.0.md#compatibility-promise).
+- **2.0.0** is needed for anything that breaks that promise without an
+  automatic migration.
+
+Release candidates (`1.1.0-rc.1`) come before each minor release and are
+published in the APT repository too; a final release always sorts as newer.
+Only the latest release gets fixes; see [SECURITY.md](SECURITY.md). Every
+release is listed in the [CHANGELOG](CHANGELOG.md).
+
 ## Building
 
 ```bash
@@ -249,7 +279,8 @@ glissando — экранная клавиатура для Phosh, работаю
 английская и немецкая раскладки с одновременным вводом на нескольких языках,
 эмодзи, буфер обмена, локальный голосовой ввод. Никакой сети, телеметрии и
 учётных записей. Поддерживается FuriOS на FuriPhone FLX1s; на других системах
-с Phosh клавиатура может работать, но это не проверено. Другие среды и Flatpak
+с Phosh на базе Debian клавиатура может работать, но это не проверено.
+postmarketOS в 1.0 не поддерживается. Другие среды и Flatpak
 не поддерживаются. Установка, обновление и удаление — выше, в разделах
 «Install», «Updating» и «Removing»; ограничения — в разделе «Known limitations».
 Настройки и интерфейс переведены на русский.
